@@ -261,6 +261,8 @@ void loop(void) {
     Serial.println("");
     readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
     Serial.println("  Data log:");
+    if(count > 2048)
+	    count = 2048;
     while(count-- > 0) {
       Serial.print("    ");
       Serial.println(ds.read(), DEC);
