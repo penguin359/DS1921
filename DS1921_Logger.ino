@@ -8,41 +8,59 @@
 // http://milesburton.com/Dallas_Temperature_Control_Library
 
 
-#define DS1921_CONVERT_TEMP	0x44
-#define DS1921_COPY_SCRATCHPAD	0x55
-#define DS1921_READ_SCRATCHPAD	0xAA
-#define DS1921_WRITE_SCRATCHPAD	0x0F
-#define DS1921_CLEAR_MEMORY	0x3C
-#define DS1921_READ_MEMORY	0xF0
+#define DS1921_CONVERT_TEMP		0x44
+#define DS1921_COPY_SCRATCHPAD		0x55
+#define DS1921_READ_SCRATCHPAD		0xAA
+#define DS1921_WRITE_SCRATCHPAD		0x0F
+#define DS1921_CLEAR_MEMORY		0x3C
+#define DS1921_READ_MEMORY		0xF0
 
-#define DS1921_RTC_REGISTER	0x0200
-#define DS1921_CONTROL_REGISTER	0x020E
-#define DS1921_STATUS_REGISTER	0x0214
-#define DS1921_SAMPLE_REGISTER	0x020D
+#define DS1921_RTC_REGISTER		0x0200
+#define DS1921_RTC_ALARM_REGISTER	0x0207
+#define DS1921_CONTROL_REGISTER		0x020E
+#define DS1921_STATUS_REGISTER		0x0214
+#define DS1921_SAMPLE_REGISTER		0x020D
 #define DS1921_DEVICE_SAMPLES_COUNTER	0x021D
 #define DS1921_MISSION_SAMPLES_COUNTER	0x021A
 #define DS1921_MISSION_TIMESTAMP	0x0215
-#define DS1921_TEMP_HISTOGRAM	0x0800
-#define DS1921_DATA_LOG		0x1000
+#define DS1921_MISSION_START_DELAY	0x0212
+#define DS1921_TEMPERATURE		0x0211
+#define DS1921_TEMPERATURE_LOW_ALARM	0x020B
+#define DS1921_TEMPERATURE_HIGH_ALARM	0x020C
+#define DS1921_TEMP_HISTOGRAM		0x0800
+#define DS1921_DATA_LOG			0x1000
 
-#define DS1921_CONTROL_nEOSC	0x80
-#define DS1921_CONTROL_EMCLR	0x40
-#define DS1921_CONTROL_nEM	0x10
-#define DS1921_CONTROL_RO	0x08
-#define DS1921_CONTROL_TLS	0x04
-#define DS1921_CONTROL_THS	0x02
-#define DS1921_CONTROL_TAS	0x01
+/*
+ * Device Samples Counter: 24-bit unsigned little-endian
+ * Mission Samples Counter: 24-bit unsigned little-endian
+ * Mission Timestamp:
+ *   BCD minutes
+ *   BCD hours (24-hour)
+ *   BCD day of month
+ *   BCD year without century
+ */
 
-#define DS1921_STATUS_nTCB	0x80
-#define DS1921_STATUS_MEMCLR	0x40
-#define DS1921_STATUS_MIP	0x20
-#define DS1921_STATUS_SIP	0x10
-#define DS1921_STATUS_TLF	0x04
-#define DS1921_STATUS_THF	0x02
-#define DS1921_STATUS_TAF	0x01
+
+#define DS1921_CONTROL_nEOSC		0x80
+#define DS1921_CONTROL_EMCLR		0x40
+#define DS1921_CONTROL_nEM		0x10
+#define DS1921_CONTROL_RO		0x08
+#define DS1921_CONTROL_TLS		0x04
+#define DS1921_CONTROL_THS		0x02
+#define DS1921_CONTROL_TAS		0x01
+
+#define DS1921_STATUS_nTCB		0x80
+#define DS1921_STATUS_MEMCLR		0x40
+#define DS1921_STATUS_MIP		0x20
+#define DS1921_STATUS_SIP		0x10
+#define DS1921_STATUS_TLF		0x04
+#define DS1921_STATUS_THF		0x02
+#define DS1921_STATUS_TAF		0x01
 
 
 OneWire  ds(21);  // on pin 10
+HardwareSerial Uart = HardwareSerial();
+#define Serial Uart
 
 void setup(void) {
   Serial.begin(9600);
@@ -122,6 +140,12 @@ void clearDS1921(byte *addr) {
     Serial.println("  Failed to clear memory!");
 }
 
+void stopMission(byte *addr) {
+  byte zero = 0;
+  writeDS1921(addr, DS1921_TEMPERATURE, &zero, sizeof(zero));
+}
+
+/* 2011-12-25T05:22:40 Sun */
 byte rtc[] = {
   0x40,	  /* BCD seconds */
   0x22,	  /* BCD minutes */
@@ -263,6 +287,7 @@ void loop(void) {
     Serial.println("  Data log:");
     if(count > 2048)
 	    count = 2048;
+    count = 4;
     while(count-- > 0) {
       Serial.print("    ");
       Serial.println(ds.read(), DEC);
