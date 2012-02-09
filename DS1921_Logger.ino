@@ -59,8 +59,8 @@
 
 
 OneWire  ds(21);  // on pin 10
-HardwareSerial Uart = HardwareSerial();
-#define Serial Uart
+//HardwareSerial Uart = HardwareSerial();
+//#define Serial Uart
 
 void setup(void) {
   Serial.begin(9600);
@@ -145,6 +145,167 @@ void stopMission(byte *addr) {
   writeDS1921(addr, DS1921_TEMPERATURE, &zero, sizeof(zero));
 }
 
+enum {
+  HOME_STATE,
+  R_STATE,
+  RT_STATE,
+  RTC_STATE,
+};
+
+byte addr[8];
+
+void parseSerial(char c) {
+  static int state = HOME_STATE;
+  byte rtcBuf[7];
+  int i;
+
+  switch(state) {
+    case HOME_STATE:
+      if(c == 'R') {
+	state = R_STATE;
+	break;
+      }
+
+      state = HOME_STATE;
+      break;
+
+    case R_STATE:
+      if(c == 'T') {
+	state = RT_STATE;
+	break;
+      }
+
+      state = HOME_STATE;
+      break;
+
+    case RT_STATE:
+      if(c == 'C') {
+	state = RTC_STATE;
+	break;
+      }
+
+      state = HOME_STATE;
+      break;
+
+    case RTC_STATE:
+      if(c == '\n') {
+	Serial.println("rtc time is ...");
+	readDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
+	Serial.print("20");
+	Serial.print((unsigned char)rtcBuf[6], HEX);
+	Serial.print("-");
+	Serial.print((unsigned char)rtcBuf[5] & ~0x80, HEX);
+	Serial.print("-");
+	Serial.print((unsigned char)rtcBuf[4], HEX);
+	Serial.print("T");
+	Serial.print((unsigned char)rtcBuf[2], HEX);
+	Serial.print(":");
+	Serial.print((unsigned char)rtcBuf[1], HEX);
+	Serial.print(":");
+	Serial.print((unsigned char)rtcBuf[0], HEX);
+	Serial.println("Z");
+	state = HOME_STATE;
+	break;
+      } else {
+	memset(rtcBuf, 0, sizeof(rtcBuf));
+	/* discard 2 */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard 0 */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[6] = (c & ~0x30) << 4;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[6] |= (c & ~0x30);
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard - */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[5] = (c & ~0x30) << 4;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[5] |= (c & ~0x30);
+	rtcBuf[5] |= 0x80;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard - */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[4] = (c & ~0x30) << 4;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[4] |= (c & ~0x30);
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard T */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[2] = (c & ~0x30) << 4;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[2] |= (c & ~0x30);
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard : */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[1] = (c & ~0x30) << 4;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[1] |= (c & ~0x30);
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard : */
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[0] = (c & ~0x30) << 4;
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	rtcBuf[0] |= (c & ~0x30);
+	while(!Serial.available())
+	  ;
+	c = Serial.read();
+	/* discard '\n' */
+	rtcBuf[3] = 1; /* day of week (1-7) */
+	Serial.print("  Set RTC = 20");
+	for(i = 6; i >= 0; i--) {
+	  Serial.print(rtcBuf[i], HEX);
+	  Serial.print(" ");
+	}
+	Serial.println("");
+	Serial.println("  Updating RTC...");
+	writeDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
+      }
+
+      state = HOME_STATE;
+      break;
+
+    default:
+      state = HOME_STATE;
+      break;
+  }
+}
+
 /* 2011-12-25T05:22:40 Sun */
 byte rtc[] = {
   0x40,	  /* BCD seconds */
@@ -163,9 +324,13 @@ void loop(void) {
   byte present = 0;
   byte type_s, type_19;
   byte data[12];
-  byte addr[8];
+  //byte addr[8];
   float celsius, fahrenheit;
   
+  if(Serial.available()) {
+    parseSerial(Serial.read());
+  }
+
   if ( !ds.search(addr)) {
     Serial.println("No more addresses.");
     Serial.println();
@@ -253,7 +418,7 @@ void loop(void) {
       }
       clearDS1921(addr);
       Serial.println("  Starting a mission.");
-      sampleRate = 5;
+      sampleRate = 1;
       writeDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
       //Serial.println("  Updating RTC...");
       //writeDS1921(addr, DS1921_RTC_REGISTER, rtc, sizeof(rtc));
