@@ -123,6 +123,7 @@ void clearDS1921(byte *addr) {
   Serial.print("  Control = ");
   Serial.println(control, HEX);
   control |= DS1921_CONTROL_EMCLR;
+  control |= DS1921_CONTROL_RO;
 
   writeDS1921(addr, DS1921_CONTROL_REGISTER, &control, sizeof(control));
 
@@ -406,7 +407,7 @@ void loop(void) {
     celsius = (float)data[0] / 2.0f - 40.0f;
 
     if(!writeRtc) {
-      byte sampleRate = 5;
+      byte sampleRate;
       readDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
       Serial.print("  sample rate = ");
       Serial.println(sampleRate, DEC);
