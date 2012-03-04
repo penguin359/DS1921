@@ -148,6 +148,7 @@ void stopMission(byte *addr) {
 
 enum {
   HOME_STATE,
+  D_STATE,
   R_STATE,
   RT_STATE,
   RTC_STATE,
@@ -164,6 +165,48 @@ void parseSerial(char c) {
     case HOME_STATE:
       if(c == 'R') {
 	state = R_STATE;
+	break;
+      } else if(c == 'D') {
+	state = D_STATE;
+	break;
+      }
+
+      state = HOME_STATE;
+      break;
+
+    case D_STATE:
+      if(c == '\n') {
+	Serial.println("STARTLOG");
+	readDS1921(addr, DS1921_MISSION_TIMESTAMP, rtcBuf, 5);
+	Serial.print("Time=20");
+	Serial.print(rtcBuf[4], HEX);
+	Serial.print("-");
+	Serial.print(rtcBuf[3], HEX);
+	Serial.print("-");
+	Serial.print(rtcBuf[2], HEX);
+	Serial.print("T");
+	Serial.print(rtcBuf[1], HEX);
+	Serial.print(":");
+	Serial.print(rtcBuf[0], HEX);
+	Serial.println(":00Z");
+
+	long count = 0;
+	byte countBytes[3];
+	readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
+	count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
+	Serial.print("Count=");
+	Serial.println(count, DEC);
+
+	readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
+	Serial.println("LOG");
+	if(count > 2048)
+		count = 2048;
+	while(count-- > 0) {
+	  Serial.print("    ");
+	  Serial.println(ds.read(), DEC);
+	}
+	Serial.println("ENDLOG");
+	state = HOME_STATE;
 	break;
       }
 
