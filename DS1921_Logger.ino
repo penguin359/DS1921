@@ -8,6 +8,16 @@
 // http://milesburton.com/Dallas_Temperature_Control_Library
 
 
+#define SELF_POWERED			1
+
+
+#define DS18B20_CONVERT_TEMP		0x44
+#define DS18B20_COPY_SCRATCHPAD		0x48
+#define DS18B20_READ_SCRATCHPAD		0xBE
+#define DS18B20_WRITE_SCRATCHPAD	0x4E
+#define DS18B20_RECALL_EE		0xB8
+#define DS18B20_READ_POWER_SUPPLY	0xB4
+
 #define DS1921_CONVERT_TEMP		0x44
 #define DS1921_COPY_SCRATCHPAD		0x55
 #define DS1921_READ_SCRATCHPAD		0xAA
@@ -58,6 +68,11 @@
 #define DS1921_STATUS_TAF		0x01
 
 
+#define LED_PIN				11
+#define ledOn()				digitalWrite(LED_PIN, HIGH);
+#define ledOff()			digitalWrite(LED_PIN, LOW);
+
+
 OneWire  ds(21);  // on pin 10
 //HardwareSerial Uart = HardwareSerial();
 //#define Serial Uart
@@ -66,6 +81,44 @@ void setup(void) {
   Serial.begin(9600);
   delay(5000);
   Serial.println("Hello, World!");
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void writeDS18B20(byte *addr, byte high, byte low, byte config) {
+  byte status;
+
+  ds.reset();
+  ds.select(addr);
+  ds.write(DS18B20_WRITE_SCRATCHPAD);
+  ds.write(high);
+  ds.write(low);
+  ds.write(config);
+
+  ds.reset();
+  ds.select(addr);
+  ds.write(DS18B20_READ_SCRATCHPAD);
+  ds.read();
+  ds.read();
+  if(ds.read() != high ||
+     ds.read() != low ||
+     ds.read() != config) {
+	  /* TODO: record failure to configure */
+	  return;
+  }
+
+  ds.reset();
+  ds.select(addr);
+  ds.write(DS18B20_COPY_SCRATCHPAD);
+#ifdef SELF_POWERED
+  /* Wait for finished writing */
+  while(!ds.read_bit())
+	  ;
+#else
+  /* TODO: enable strong pull-up */
+  delay(10);
+  /* TODO: disable strong pull-up */
+#endif
+  /* TODO: replace delay with better solution */
 }
 
 void writeDS1921(byte *addr, int target, byte *data, int len) {
@@ -364,6 +417,7 @@ byte rtc[] = {
 int writeRtc = 0;
 
 void loop(void) {
+  static int alarm = 0;
   byte i;
   byte present = 0;
   byte type_s, type_19;
@@ -382,12 +436,14 @@ void loop(void) {
     delay(250);
     return;
   }
-  
+
+#if 0
   Serial.print("ROM =");
   for( i = 0; i < 8; i++) {
     Serial.write(' ');
     Serial.print(addr[i], HEX);
   }
+#endif
 
   if (OneWire::crc8(addr, 7) != addr[7]) {
       Serial.println("CRC is not valid!");
@@ -415,7 +471,9 @@ void loop(void) {
       type_19 = 1;
       break;
     default:
+#if 0
       Serial.println("Device is not a DS18x20 family device.");
+#endif
       return;
   } 
 
@@ -430,6 +488,7 @@ void loop(void) {
   ds.select(addr);
   if(type_19) {
     ds.write(DS1921_READ_MEMORY);
+#if 0
     ds.write(0x00);
     ds.write(0x02);
     Serial.print("  Clock =");
@@ -440,15 +499,20 @@ void loop(void) {
     Serial.println("");
     for( ; i < 0x11; i++)
       ds.read();
-    //ds.write(0x11);
-    //ds.write(0x02);
+#else
+    ds.write(0x11);
+    ds.write(0x02);
+#endif
     data[0] = ds.read();
+#if 0
     Serial.print("  Data = ");
     Serial.print(present,HEX);
     Serial.print(" ");
     Serial.println(data[0], HEX);
+#endif
     celsius = (float)data[0] / 2.0f - 40.0f;
 
+#if 0
     if(!writeRtc) {
       byte sampleRate;
       readDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
@@ -502,20 +566,27 @@ void loop(void) {
       Serial.println(ds.read(), DEC);
     }
     Serial.println("");
+#endif
   } else {
-    ds.write(0xBE);         // Read Scratchpad
+    ds.write(DS18B20_READ_SCRATCHPAD);
 
+#if 0
   Serial.print("  Data = ");
   Serial.print(present,HEX);
   Serial.print(" ");
+#endif
   for ( i = 0; i < 9; i++) {           // we need 9 bytes
     data[i] = ds.read();
+#if 0
     Serial.print(data[i], HEX);
     Serial.print(" ");
+#endif
   }
+#if 0
   Serial.print(" CRC=");
   Serial.print(OneWire::crc8(data, 8), HEX);
   Serial.println();
+#endif
 
   // convert the data to actual temperature
 
@@ -535,10 +606,20 @@ void loop(void) {
   }
   celsius = (float)raw / 16.0;
   }
+  if(celsius < 15. || celsius > 25.) {
+	  Serial.println("ALARM!");
+	  alarm = 1;
+	  ledOn();
+  } else {
+	  ledOff();
+  }
   fahrenheit = celsius * 1.8 + 32.0;
-  Serial.print("  ATemperature = ");
+  //Serial.print("  ATemperature = ");
+  Serial.print("  T=");
   Serial.print(celsius);
-  Serial.print(" Celsius, ");
+  //Serial.print(" Celsius, ");
+  Serial.print("C, ");
   Serial.print(fahrenheit);
-  Serial.println(" Fahrenheit");
+  //Serial.println(" Fahrenheit");
+  Serial.println("F");
 }
