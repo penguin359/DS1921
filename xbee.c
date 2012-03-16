@@ -18,6 +18,25 @@ typedef int bool;
 #define XON		0x11
 #define XOFF		0x13
 
+#define AT_API_CMD		0x08
+#define AT_QUEUE_API_CMD	0x09
+#define ZB_TX_API_CMD		0x10
+#define ZB_TX_EXPLICIT_API_CMD	0x11
+#define REMOTE_AT_API_CMD	0x17
+#define CREATE_SRC_ROUTE_CMD	0x21
+#define AT_RESP_API_CMD		0x88
+#define MODEM_STATUS_API_CMD	0x8a
+#define ZB_TX_STATUS_API_CMD	0x8b
+#define ZB_RX_API_CMD		0x90
+#define ZB_RX_EXPLICIT_API_CMD	0x91
+#define ZB_IO_DATA_SAMPLE_API_CMD	0x92
+#define XBEE_SENSOR_READ_API_CMD	0x94
+#define NODE_IDENTIFICATION_API_CMD	0x95
+#define REMOTE_AT_RESP_API_CMD	0x97
+#define OTA_UPDATE_API_CMD	0xa0
+#define ROUTE_RECORD_API_CMD	0xa1
+#define MANY_TO_ONE_API_CMD	0xa3
+
 int writeChar(int fd, unsigned char c, int len)
 {
 	return write(fd, &c, sizeof(c));
@@ -63,6 +82,48 @@ int sendApi(int fd, char *data, int len)
 	return 0;
 }
 
+int frameId = 1;
+
+int sendAt(int fd, char *cmd, bool queue)
+{
+	char buf[4];
+
+	buf[0] = AT_API_CMD;
+	buf[1] = frameId++;
+	buf[2] = cmd[0];
+	buf[3] = cmd[1];
+	if(queue)
+		buf[0] = AT_QUEUE_API_CMD;
+
+	return sendApi(fd, buf, 4);
+}
+
+typedef struct {
+	unsigned char addr[8];
+} macAddr_t;
+
+int sendTx(int fd, macAddr_t addr, void *data, int len)
+{
+	char buf[128], *bufPtr = buf;
+	int bufLen = 0;
+
+	*bufPtr++ = ZB_TX_API_CMD; bufLen++;
+	*bufPtr++ = frameId++; bufLen++;
+	memcpy(bufPtr, &addr, sizeof(addr));
+	bufPtr += sizeof(addr); bufLen += sizeof(addr);
+	*bufPtr++ = 0xff; bufLen++; /* 16-bit destination address */
+	*bufPtr++ = 0xfe; bufLen++;
+	*bufPtr++ = 0x00; bufLen++; /* broadcast radius */
+	*bufPtr++ = 0x00; bufLen++; /* options */
+	if(len > sizeof(buf)-bufLen)
+		return -1;
+	memcpy(&buf[14], data, sizeof(buf)-14);
+	memcpy(bufPtr, data, len);
+	bufPtr += len; bufLen += len;
+
+	return sendApi(fd, buf, bufLen);
+}
+
 enum {
 	WAIT_API_STATE,
 	//START_API_STATE,
@@ -83,6 +144,11 @@ bool escapeNextByte = FALSE;
 
 int processApi(unsigned char *buf, int len)
 {
+	switch(buf[0]) {
+	case ZB_TX_API_CMD:
+	case AT_API_CMD:
+		break;
+	}
 	printf("P: '");
 	while(len-- > 0) {
 		if(isprint(*buf)) {
@@ -176,6 +242,8 @@ int recvApi(int fd)
 int main(int argc, char **argv)
 {
 	int fd;
+	macAddr_t addr = { { 1, 2, 3, 4, 5, 6, 7, 8 } };
+	char *str = "Hello, World!";
 
 	if(argc < 2) {
 		fprintf(stderr, "Usage: %s file\n", argv[0]);
@@ -186,7 +254,7 @@ int main(int argc, char **argv)
 		perror("open");
 		exit(1);
 	}
-	
+
 	if(sendApi(fd, "hello", 5) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
 		close(fd);
@@ -198,6 +266,16 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	if(sendApi(fd, "escape\x13me", 9) < 0) {
+		fprintf(stderr, "Error sending API packet\n");
+		close(fd);
+		exit(1);
+	}
+	if(sendAt(fd, "BD", 0x09) < 0) {
+		fprintf(stderr, "Error sending API packet\n");
+		close(fd);
+		exit(1);
+	}
+	if(sendTx(fd, addr, str, strlen(str)) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
 		close(fd);
 		exit(1);

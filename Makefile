@@ -6,3 +6,6 @@ xbee: xbee.c
 
 test: xbee
 	./xbee testfile
+
+clean:
+	-rm -fr testfile xbee.dSYM xbee
