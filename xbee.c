@@ -37,78 +37,137 @@ typedef int bool;
 #define ROUTE_RECORD_API_CMD	0xa1
 #define MANY_TO_ONE_API_CMD	0xa3
 
-int writeChar(int fd, unsigned char c, int len)
+typedef struct {
+	unsigned char addr[8];
+} macAddr_t;
+
+typedef struct {
+	int fd;
+	int frameId;
+	char buf[128];
+	size_t bufLen;
+	size_t bufMaxLen;
+} xbee_t;
+
+int writeChar(xbee_t *xbee, unsigned char c, int len)
 {
-	return write(fd, &c, sizeof(c));
+	return write(xbee->fd, &c, sizeof(c));
 }
 
-int writeByte(int fd, unsigned char byte, bool escape)
+int writeByte(xbee_t *xbee, unsigned char byte, bool escape)
 {
 	if(escape &&
 	   (byte == API_START ||
 	    byte == API_ESCAPE ||
 	    byte == XON ||
 	    byte == XOFF)) {
-		if(writeChar(fd, API_ESCAPE, 1) < 0)
+		if(writeChar(xbee, API_ESCAPE, 1) < 0)
 			return -1;
-		if(writeChar(fd, byte ^ API_XOR, 1) < 0)
+		if(writeChar(xbee, byte ^ API_XOR, 1) < 0)
 			return -1;
 	} else {
-		if(writeChar(fd, byte, 1) < 0)
+		if(writeChar(xbee, byte, 1) < 0)
 			return -1;
 	}
 
 	return 0;
 }
 
-int sendApi(int fd, char *data, int len)
+int sendApi(xbee_t *xbee, char *data, int len)
 {
 	unsigned char checksum = 0;
 
-	if(writeByte(fd, API_START, FALSE) < 0)
+	if(writeByte(xbee, API_START, FALSE) < 0)
 		return -1;
-	if(writeByte(fd, (len >> 8) & 0xff, TRUE) < 0)
+	if(writeByte(xbee, (len >> 8) & 0xff, TRUE) < 0)
 		return -1;
-	if(writeByte(fd, (len >> 0) & 0xff, TRUE) < 0)
+	if(writeByte(xbee, (len >> 0) & 0xff, TRUE) < 0)
 		return -1;
 	while(len-- > 0) {
 		checksum += *data;
-		if(writeByte(fd, *data++, TRUE) < 0)
+		if(writeByte(xbee, *data++, TRUE) < 0)
 			return -1;
 	}
-	if(writeByte(fd, 0xff - checksum, TRUE) < 0)
+	if(writeByte(xbee, 0xff - checksum, TRUE) < 0)
 		return -1;
 
 	return 0;
 }
 
-int frameId = 1;
-
-int sendAt(int fd, char *cmd, bool queue)
+int sendApiCmd(xbee_t *xbee, int type, bool ack)
 {
-	char buf[4];
+	if(xbee->bufMaxLen - xbee->bufLen < 2)
+		return -1;
 
-	buf[0] = AT_API_CMD;
-	buf[1] = frameId++;
-	buf[2] = cmd[0];
-	buf[3] = cmd[1];
-	if(queue)
-		buf[0] = AT_QUEUE_API_CMD;
+	xbee->buf[xbee->bufLen++] = type;
+	if(ack) {
+		xbee->buf[xbee->bufLen++] = xbee->frameId;
+		xbee->frameId++;
+		if(xbee->frameId <= 0 || xbee->frameId > 255)
+			xbee->frameId = 1;
+	} else {
+		xbee->buf[xbee->bufLen++] = 0;
+	}
 
-	return sendApi(fd, buf, 4);
+	return 0;
 }
 
-typedef struct {
-	unsigned char addr[8];
-} macAddr_t;
+int sendApiAddr(xbee_t *xbee, macAddr_t *addr)
+{
+	if(xbee->bufMaxLen - xbee->bufLen < sizeof(macAddr_t)+2)
+		return -1;
 
-int sendTx(int fd, macAddr_t addr, void *data, int len)
+	memcpy(&xbee->buf[xbee->bufLen], addr, sizeof(macAddr_t));
+	xbee->bufLen += sizeof(macAddr_t);
+	xbee->buf[xbee->bufLen++] = 0xff; /* 16-bit destination address */
+	xbee->buf[xbee->bufLen++] = 0xfe; /* FFFE means unknown */
+
+	return 0;
+}
+
+int sendAt(xbee_t *xbee, char *cmd, bool queue)
+{
+	char buf[128], *bufPtr = buf;
+	int bufLen = 0;
+
+	*bufPtr++ = AT_API_CMD; bufLen++;
+	*bufPtr++ = xbee->frameId; bufLen++;
+	*bufPtr++ = cmd[0]; bufLen++;
+	*bufPtr++ = cmd[1]; bufLen++;
+	if(queue)
+		buf[0] = AT_QUEUE_API_CMD;
+	xbee->frameId++;
+	if(xbee->frameId <= 0 || xbee->frameId > 255)
+		xbee->frameId = 1;
+
+	return sendApi(xbee, buf, bufLen);
+}
+
+int sendRemoteAt(xbee_t *xbee, macAddr_t addr, char *cmd, bool queue)
+{
+	int options = 0;
+
+	if(queue)
+		options = 0x02;
+	sendApiCmd(xbee, REMOTE_AT_API_CMD, TRUE);
+	sendApiAddr(xbee, &addr);
+	xbee->buf[xbee->bufLen++] = options;
+	xbee->buf[xbee->bufLen++] = cmd[0];
+	xbee->buf[xbee->bufLen++] = cmd[1];
+
+	return sendApi(xbee, xbee->buf, xbee->bufLen);
+}
+
+int sendTx(xbee_t *xbee, macAddr_t addr, void *data, int len)
 {
 	char buf[128], *bufPtr = buf;
 	int bufLen = 0;
 
 	*bufPtr++ = ZB_TX_API_CMD; bufLen++;
-	*bufPtr++ = frameId++; bufLen++;
+	*bufPtr++ = xbee->frameId; bufLen++;
+	xbee->frameId++;
+	if(xbee->frameId <= 0 || xbee->frameId > 255)
+		xbee->frameId = 1;
 	memcpy(bufPtr, &addr, sizeof(addr));
 	bufPtr += sizeof(addr); bufLen += sizeof(addr);
 	*bufPtr++ = 0xff; bufLen++; /* 16-bit destination address */
@@ -121,7 +180,38 @@ int sendTx(int fd, macAddr_t addr, void *data, int len)
 	memcpy(bufPtr, data, len);
 	bufPtr += len; bufLen += len;
 
-	return sendApi(fd, buf, bufLen);
+	return sendApi(xbee, buf, bufLen);
+}
+
+int sendTxExplicit(xbee_t *xbee, macAddr_t addr, void *data, int len, int srcEndpoint, int dstEndpoint, int clusterId, int profileId)
+{
+	char buf[128], *bufPtr = buf;
+	int bufLen = 0;
+
+	*bufPtr++ = ZB_TX_EXPLICIT_API_CMD; bufLen++;
+	*bufPtr++ = xbee->frameId; bufLen++;
+	xbee->frameId++;
+	if(xbee->frameId <= 0 || xbee->frameId > 255)
+		xbee->frameId = 1;
+	memcpy(bufPtr, &addr, sizeof(addr));
+	bufPtr += sizeof(addr); bufLen += sizeof(addr);
+	*bufPtr++ = 0xff; bufLen++; /* 16-bit destination address */
+	*bufPtr++ = 0xfe; bufLen++;
+	*bufPtr++ = srcEndpoint; bufLen++;
+	*bufPtr++ = dstEndpoint; bufLen++;
+	*bufPtr++ = (clusterId >> 8) & 0xff; bufLen++;
+	*bufPtr++ = (clusterId >> 0) & 0xff; bufLen++;
+	*bufPtr++ = (profileId >> 8) & 0xff; bufLen++;
+	*bufPtr++ = (profileId >> 0) & 0xff; bufLen++;
+	*bufPtr++ = 0x00; bufLen++; /* broadcast radius */
+	*bufPtr++ = 0x00; bufLen++; /* options */
+	if(len > sizeof(buf)-bufLen)
+		return -1;
+	memcpy(&buf[14], data, sizeof(buf)-14);
+	memcpy(bufPtr, data, len);
+	bufPtr += len; bufLen += len;
+
+	return sendApi(xbee, buf, bufLen);
 }
 
 enum {
@@ -162,19 +252,19 @@ int processApi(unsigned char *buf, int len)
 	return 0;
 }
 
-int recvApi(int fd)
+int recvApi(xbee_t *xbee)
 {
 	int count;
 	unsigned char c;
 
-	if((count = read(fd, &c, 1)) < 0) {
+	if((count = read(xbee->fd, &c, 1)) < 0) {
 		perror("read()");
 		return -1;
 	}
 
 	if(count == 0) {
 		fprintf(stderr, "End of file\n");
-		exit(1);
+		exit(0);
 	}
 
 	if(c == API_START) {
@@ -239,9 +329,13 @@ int recvApi(int fd)
 	return 0;
 }
 
+const macAddr_t broadcastAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff }};
+const macAddr_t coordinatorAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }};
+
 int main(int argc, char **argv)
 {
-	int fd;
+	xbee_t xbeeDevice;
+	xbee_t *xbee = &xbeeDevice;
 	macAddr_t addr = { { 1, 2, 3, 4, 5, 6, 7, 8 } };
 	char *str = "Hello, World!";
 
@@ -250,42 +344,55 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	if((fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
+	if((xbee->fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
 		perror("open");
 		exit(1);
 	}
+	xbee->frameId = 1;
+	xbee->bufLen = 0;
+	xbee->bufMaxLen = sizeof(xbee->buf);
 
-	if(sendApi(fd, "hello", 5) < 0) {
+	if(sendApi(xbee, "hello", 5) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(fd);
+		close(xbee->fd);
 		exit(1);
 	}
-	if(sendApi(fd, "world", 5) < 0) {
+	if(sendApi(xbee, "world", 5) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(fd);
+		close(xbee->fd);
 		exit(1);
 	}
-	if(sendApi(fd, "escape\x13me", 9) < 0) {
+	if(sendApi(xbee, "escape\x13me", 9) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(fd);
+		close(xbee->fd);
 		exit(1);
 	}
-	if(sendAt(fd, "BD", 0x09) < 0) {
+	if(sendAt(xbee, "NJ", TRUE) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(fd);
+		close(xbee->fd);
 		exit(1);
 	}
-	if(sendTx(fd, addr, str, strlen(str)) < 0) {
+	if(sendAt(xbee, "BD", FALSE) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(fd);
+		close(xbee->fd);
+		exit(1);
+	}
+	if(sendTx(xbee, addr, str, strlen(str)) < 0) {
+		fprintf(stderr, "Error sending API packet\n");
+		close(xbee->fd);
+		exit(1);
+	}
+	if(sendRemoteAt(xbee, addr, "AO", TRUE) < 0) {
+		fprintf(stderr, "Error sending API packet\n");
+		close(xbee->fd);
 		exit(1);
 	}
 
-	lseek(fd, 0L, SEEK_SET);
+	lseek(xbee->fd, 0L, SEEK_SET);
 	while(1)
-		recvApi(fd);
+		recvApi(xbee);
 
-	close(fd);
+	close(xbee->fd);
 
 	exit(0);
 }
