@@ -74,8 +74,8 @@
 
 
 OneWire  ds(21);  // on pin 10
-//HardwareSerial Uart = HardwareSerial();
-//#define Serial Uart
+HardwareSerial Uart = HardwareSerial();
+#define Serial Uart
 
 void setup(void) {
   Serial.begin(9600);
@@ -430,10 +430,11 @@ void loop(void) {
   }
 
   if ( !ds.search(addr)) {
-    Serial.println("No more addresses.");
+    //Serial.println("No more addresses.");
     Serial.println();
     ds.reset_search();
     delay(250);
+    delay(1250);
     return;
   }
 
@@ -606,7 +607,7 @@ void loop(void) {
   }
   celsius = (float)raw / 16.0;
   }
-  if(celsius < 15. || celsius > 25.) {
+  if(celsius < 8. || celsius > 58.) {
 	  Serial.println("ALARM!");
 	  alarm = 1;
 	  ledOn();
