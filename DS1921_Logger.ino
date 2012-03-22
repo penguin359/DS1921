@@ -77,6 +77,9 @@ OneWire  ds(21);  // on pin 10
 HardwareSerial Uart = HardwareSerial();
 #define Serial Uart
 
+unsigned long clock = 0;
+elapsedMillis clockTick;
+
 void setup(void) {
   Serial.begin(9600);
   delay(5000);
@@ -202,25 +205,35 @@ void stopMission(byte *addr) {
 enum {
   HOME_STATE,
   D_STATE,
+  C_STATE,
   R_STATE,
   RT_STATE,
   RTC_STATE,
 };
 
 byte addr[8];
+byte buf[11];
+int bufCount = 0;
+long val;
 
 void parseSerial(char c) {
   static int state = HOME_STATE;
   byte rtcBuf[7];
+
   int i;
 
   switch(state) {
     case HOME_STATE:
-      if(c == 'R') {
-	state = R_STATE;
-	break;
-      } else if(c == 'D') {
+      if(c == 'D') {
 	state = D_STATE;
+	break;
+      } else if(c == 'C') {
+	state = C_STATE;
+	bufCount = 0;
+	val = 0;
+	break;
+      } else if(c == 'R') {
+	state = R_STATE;
 	break;
       }
 
@@ -263,6 +276,20 @@ void parseSerial(char c) {
 	break;
       }
 
+      state = HOME_STATE;
+      break;
+
+    case C_STATE:
+      if(isdigit(c) || bufCount >= sizeof(buf)-1) {
+	      val = val*10 + c - '0';
+	      bufCount++;
+	      //buf[bufCount] = c;
+	      break;
+      }
+
+      clock = val;
+      Serial.print("Time set to ");
+      Serial.println(clock, DEC);
       state = HOME_STATE;
       break;
 
@@ -424,11 +451,19 @@ void loop(void) {
   byte data[12];
   //byte addr[8];
   float celsius, fahrenheit;
-  
+
+  if(clockTick >= 1000) {
+	  clockTick -= 1000;
+	  clock++;
+	  Serial.print("Time=");
+	  Serial.println(clock, DEC);
+  }
+
   if(Serial.available()) {
     parseSerial(Serial.read());
   }
 
+#if 0
   if ( !ds.search(addr)) {
     //Serial.println("No more addresses.");
     Serial.println();
@@ -623,4 +658,5 @@ void loop(void) {
   Serial.print(fahrenheit);
   //Serial.println(" Fahrenheit");
   Serial.println("F");
+#endif
 }
