@@ -74,11 +74,12 @@
 
 
 OneWire  ds(21);  // on pin 10
-HardwareSerial Uart = HardwareSerial();
-#define Serial Uart
+//HardwareSerial Uart = HardwareSerial();
+//#define Serial Uart
 
 unsigned long clock = 0;
-elapsedMillis clockTick;
+//elapsedMillis clockTick;
+unsigned long  clockTick;
 
 void setup(void) {
   Serial.begin(9600);
@@ -222,6 +223,10 @@ void parseSerial(char c) {
 
   int i;
 
+  Serial.print("S=");
+  Serial.print(state, DEC);
+  Serial.print(": ");
+  Serial.println(c);
   switch(state) {
     case HOME_STATE:
       if(c == 'D') {
@@ -280,7 +285,7 @@ void parseSerial(char c) {
       break;
 
     case C_STATE:
-      if(isdigit(c) || bufCount >= sizeof(buf)-1) {
+      if(isdigit(c) && bufCount < sizeof(buf)-1) {
 	      val = val*10 + c - '0';
 	      bufCount++;
 	      //buf[bufCount] = c;
@@ -452,8 +457,9 @@ void loop(void) {
   //byte addr[8];
   float celsius, fahrenheit;
 
-  if(clockTick >= 1000) {
-	  clockTick -= 1000;
+  unsigned long currentMillis = millis();
+  if(currentMillis - clockTick >= 1000UL) {
+	  clockTick += 1000UL;
 	  clock++;
 	  Serial.print("Time=");
 	  Serial.println(clock, DEC);
