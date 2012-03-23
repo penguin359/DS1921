@@ -1,0 +1,39 @@
+dumplog.c is a small C program to send a periodic dump command out the
+specified TTY device and to echo any data it receives.  Most other
+scripts in this folder use it for receiving serial data.  Compile it
+like so:
+
+gcc -g -Wall -Werror dumplog.c -o dumplog
+
+Currently, it only works with the cu version of a TTY device.  To
+execute it, run it like so:
+
+./dumplog /dev/cu.usbmodem12341
+
+Most scripts in this folder already call it similarly using a
+hard-coded TTY device.  The file dump contains an example shell command
+that calls dumplog and filters out only the main temperature log out of
+the received serial data.
+
+fetch.sh, graph.sh, and log.sh were some test scripts to create a
+Round-Robbin Database with rrdtool, load it up with data, and graph it.
+The data collected via the shell command in dump needs to be inserted
+with a series of commands like this:
+
+rrdtool update test.rrd 920926680:123
+
+With the first number replaced by an appropriate UNIX timestamp and the
+second number with the corresponding temperature value.  This must be
+done after a freshly created database with log.sh.
+
+octave.m is an Octave script to graph the same data, but stored in a
+two-column CSV file called rrds.csv.
+
+The series of scripts starting with monitor were the scripts used for
+the actual demo.  First, a new RRD database is created via
+monitor-start.sh and then it a running log can be started by running
+monitor2.sh.  An older, basic version that merely printed out
+temperatures and sounded an alarm is in monitor.sh.  monitor2.sh is
+merely a small wrapper around monitor2.pl which does the real work.
+Once some data has been collected, it can be graphed with
+monitor-graph.sh which will create a graph of the last hour of data.
