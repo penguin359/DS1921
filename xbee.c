@@ -37,6 +37,14 @@ typedef int bool;
 #define ROUTE_RECORD_API_CMD	0xa1
 #define MANY_TO_ONE_API_CMD	0xa3
 
+#define DEST_HIGH_AT_CMD	"DH"
+#define DEST_LOW_AT_CMD		"DL"
+#define MY_NET_ADDR_AT_CMD	"MY"
+#define PARENT_NET_ADDR_AT_CMD	"MP"
+#define FREE_CHILD_NODES_AT_CMD	"NC"
+#define SERIAL_HIGH_AT_CMD	"SH"
+#define SERIAL_LOW_AT_CMD	"SL"
+
 typedef struct {
 	unsigned char addr[8];
 } macAddr_t;
@@ -236,7 +244,23 @@ int processApi(unsigned char *buf, int len)
 {
 	switch(buf[0]) {
 	case ZB_TX_API_CMD:
+		printf("I spy a Zigbee packet transmission -> ");
+		break;
+
+	case ZB_RX_API_CMD:
+		printf("I spy a Zigbee packet reception -> ");
+		break;
+
 	case AT_API_CMD:
+		printf("I spy an AT command -> ");
+		break;
+
+	case AT_RESP_API_CMD:
+		printf("I spy an AT command response -> ");
+		break;
+
+	default:
+		/* Ignore unknown commands */
 		break;
 	}
 	printf("P: '");

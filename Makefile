@@ -1,11 +1,18 @@
 CC = gcc
 CFLAGS = -Wall -Werror -g
 
-xbee: xbee.c
+all: xbee
+
+xbee: xbee.o
 	$(CC) $(CFLAGS) -o $@ $^
+
+xbee.o: xbee.c
+	$(CC) $(CFLAGS) -c $^
 
 test: xbee
 	./xbee testfile
 
 clean:
-	-rm -fr testfile xbee.dSYM xbee
+	-rm -fr testfile xbee.dSYM xbee *.o
+
+.PHONY: all clean test
