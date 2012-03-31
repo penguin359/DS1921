@@ -12,7 +12,7 @@
 int main(int argc, char **argv)
 {
 	char *file;
-	struct termios termios;
+	struct termios termios, savedTermios;
 	int fd;
 	int count;
 	char buf[128];
@@ -27,7 +27,7 @@ int main(int argc, char **argv)
 	file = argv[1];
 
 	printf("Opening...\n");
-	if((fd = open(file, O_RDWR)) < 0) {
+	if((fd = open(file, O_RDWR | O_NONBLOCK)) < 0) {
 		perror("open()");
 		exit(1);
 	}
@@ -39,12 +39,29 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	memcpy(&savedTermios, &termios, sizeof(struct termios));
+	cfsetspeed(&termios, B9600);
+	termios.c_cflag &= ~(CSIZE | CSTOPB | PARENB | CRTSCTS);
+	termios.c_cflag |= CS8 | CREAD | CLOCAL;
+	termios.c_lflag &= ~(ECHO | ICANON | IEXTEN);
+
+	if(tcsetattr(fd, TCSANOW, &termios) < 0) {
+		perror("tcsetattr()");
+		close(fd);
+		exit(1);
+	}
+
 	time_t lastTime = 0, currentTime;
 	while(1) {
 		time(&currentTime);
 		if(currentTime >= lastTime + 60) {
 			if(write(fd, "D\n", 2) < 2) {
 				perror("write()");
+				if(tcsetattr(fd, TCSANOW, &savedTermios) < 0) {
+					perror("tcsetattr()");
+					close(fd);
+					exit(1);
+				}
 				close(fd);
 				exit(1);
 			}
