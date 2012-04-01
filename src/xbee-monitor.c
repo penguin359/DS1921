@@ -31,6 +31,8 @@ int main(int argc, char **argv)
 
 	file = argv[1];
 
+	initNodes();
+
 	fd = openSerial(file);
 	//if((fd = open("testfile", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
 	//	perror("open");

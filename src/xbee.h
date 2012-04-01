@@ -67,6 +67,8 @@ typedef struct {
 extern const macAddr_t broadcastAddr;
 extern const macAddr_t coordinatorAddr;
 
+void initNodes(void);
+
 int sendApi(xbee_t *xbee, char *data, int len);
 int sendAt(xbee_t *xbee, char *cmd, bool queue);
 int sendRemoteAt(xbee_t *xbee, macAddr_t addr, char *cmd, bool queue);

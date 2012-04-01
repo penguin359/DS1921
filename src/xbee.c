@@ -10,7 +10,7 @@
 #include "xbee.h"
 
 
-#define MAX_NODES		1
+#define MAX_NODES		10
 #define MAX_IDENTIFIER_LEN	20
 
 typedef enum {
@@ -47,14 +47,23 @@ int addNewNode(nodeIdentification_t *node)
 		return -1;
 	}
 
-	nodes[i].status = SENSOR_NODE_STATUS;
-	memcpy(&nodes[i].addr64, &node->addr64, sizeof(macAddr_t));
-	memcpy(&nodes[i].addr16, &node->addr16, sizeof(uint16_t));
-	strncpy(nodes[i].identifier, node->identifier, MAX_IDENTIFIER_LEN);
+	nodes[freeNode].status = SENSOR_NODE_STATUS;
+	memcpy(&nodes[freeNode].addr64, &node->addr64, sizeof(macAddr_t));
+	memcpy(&nodes[freeNode].addr16, &node->addr16, sizeof(uint16_t));
+	strncpy(nodes[freeNode].identifier, node->identifier, MAX_IDENTIFIER_LEN);
 
 	printf("New node: %s\n", node->identifier);
 
 	return 0;
+}
+
+void initNodes(void)
+{
+	int i;
+
+	memset(nodes, 0, sizeof(nodes));
+	for(i = 0; i < MAX_NODES; i++)
+		nodes[i].status = UNUSED_NODE_STATUS;
 }
 
 int writeChar(xbee_t *xbee, unsigned char c, int len)
