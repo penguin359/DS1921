@@ -3,59 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
+//#include <fcntl.h>
 //#include <sys/stat.h>
 
+#include "xbee.h"
 
-typedef int bool;
-#define TRUE	1
-#define FALSE	0
-
-
-#define API_START	0x7E
-#define API_ESCAPE	0x7D
-#define API_XOR		0x20
-#define XON		0x11
-#define XOFF		0x13
-
-#define AT_API_CMD		0x08
-#define AT_QUEUE_API_CMD	0x09
-#define ZB_TX_API_CMD		0x10
-#define ZB_TX_EXPLICIT_API_CMD	0x11
-#define REMOTE_AT_API_CMD	0x17
-#define CREATE_SRC_ROUTE_CMD	0x21
-#define AT_RESP_API_CMD		0x88
-#define MODEM_STATUS_API_CMD	0x8a
-#define ZB_TX_STATUS_API_CMD	0x8b
-#define ZB_RX_API_CMD		0x90
-#define ZB_RX_EXPLICIT_API_CMD	0x91
-#define ZB_IO_DATA_SAMPLE_API_CMD	0x92
-#define XBEE_SENSOR_READ_API_CMD	0x94
-#define NODE_IDENTIFICATION_API_CMD	0x95
-#define REMOTE_AT_RESP_API_CMD	0x97
-#define OTA_UPDATE_API_CMD	0xa0
-#define ROUTE_RECORD_API_CMD	0xa1
-#define MANY_TO_ONE_API_CMD	0xa3
-
-#define DEST_HIGH_AT_CMD	"DH"
-#define DEST_LOW_AT_CMD		"DL"
-#define MY_NET_ADDR_AT_CMD	"MY"
-#define PARENT_NET_ADDR_AT_CMD	"MP"
-#define FREE_CHILD_NODES_AT_CMD	"NC"
-#define SERIAL_HIGH_AT_CMD	"SH"
-#define SERIAL_LOW_AT_CMD	"SL"
-
-typedef struct {
-	unsigned char addr[8];
-} macAddr_t;
-
-typedef struct {
-	int fd;
-	int frameId;
-	char buf[128];
-	size_t bufLen;
-	size_t bufMaxLen;
-} xbee_t;
 
 int writeChar(xbee_t *xbee, unsigned char c, int len)
 {
@@ -355,68 +307,3 @@ int recvApi(xbee_t *xbee)
 
 const macAddr_t broadcastAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff }};
 const macAddr_t coordinatorAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }};
-
-int main(int argc, char **argv)
-{
-	xbee_t xbeeDevice;
-	xbee_t *xbee = &xbeeDevice;
-	macAddr_t addr = { { 1, 2, 3, 4, 5, 6, 7, 8 } };
-	char *str = "Hello, World!";
-
-	if(argc < 2) {
-		fprintf(stderr, "Usage: %s file\n", argv[0]);
-		exit(1);
-	}
-
-	if((xbee->fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
-		perror("open");
-		exit(1);
-	}
-	xbee->frameId = 1;
-	xbee->bufLen = 0;
-	xbee->bufMaxLen = sizeof(xbee->buf);
-
-	if(sendApi(xbee, "hello", 5) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-	if(sendApi(xbee, "world", 5) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-	if(sendApi(xbee, "escape\x13me", 9) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-	if(sendAt(xbee, "NJ", TRUE) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-	if(sendAt(xbee, "BD", FALSE) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-	if(sendTx(xbee, addr, str, strlen(str)) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-	if(sendRemoteAt(xbee, addr, "AO", TRUE) < 0) {
-		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
-		exit(1);
-	}
-
-	lseek(xbee->fd, 0L, SEEK_SET);
-	while(1)
-		recvApi(xbee);
-
-	close(xbee->fd);
-
-	exit(0);
-}
