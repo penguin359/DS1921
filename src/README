@@ -3,12 +3,11 @@ specified TTY device and to echo any data it receives.  Most other
 scripts in this folder use it for receiving serial data.  Compile it
 like so:
 
-gcc -g -Wall -Werror dumplog.c -o dumplog
+make dumplog
 
-Currently, it only works with the cu version of a TTY device.  To
-execute it, run it like so:
+You can test it like so:
 
-./dumplog /dev/cu.usbmodem12341
+./dumplog /dev/tty.usbmodem12341
 
 Most scripts in this folder already call it similarly using a
 hard-coded TTY device.  The file dump contains an example shell command

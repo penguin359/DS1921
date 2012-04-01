@@ -1,1 +1,1 @@
-./dumplog /dev/cu.usbmodem12341 | awk 'BEGIN {P=0} /^STARTLOG\r$/ {P=1} P==1 {print} /^ENDLOG\r$/ {P=0}'
+./dumplog /dev/tty.usbmodem12341 | awk 'BEGIN {P=0} /^STARTLOG\r$/ {P=1} P==1 {print} /^ENDLOG\r$/ {P=0}'

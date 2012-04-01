@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -194,6 +195,8 @@ bool escapeNextByte = FALSE;
 
 int processApi(unsigned char *buf, int len)
 {
+	int i;
+
 	switch(buf[0]) {
 	case ZB_TX_API_CMD:
 		printf("I spy a Zigbee packet transmission -> ");
@@ -201,6 +204,9 @@ int processApi(unsigned char *buf, int len)
 
 	case ZB_RX_API_CMD:
 		printf("I spy a Zigbee packet reception -> ");
+		for(i = 12; i < len; i++)
+			fputc(buf[i], stdout);
+		fputc('\n', stdout);
 		break;
 
 	case AT_API_CMD:
@@ -230,13 +236,18 @@ int processApi(unsigned char *buf, int len)
 
 int recvApi(xbee_t *xbee)
 {
+	int savedErrno;
 	int count;
 	unsigned char c;
 
 	if((count = read(xbee->fd, &c, 1)) < 0) {
-		perror("read()");
+		savedErrno = errno;
+		if(errno != EAGAIN)
+			perror("read()");
+		errno = savedErrno;
 		return -1;
 	}
+	//printf("C:'%c' (0x%02x)\n", c, c);
 
 	if(count == 0) {
 		fprintf(stderr, "End of file\n");

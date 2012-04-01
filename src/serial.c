@@ -34,6 +34,8 @@ int openSerial(char *file)
 	termios.c_cflag &= ~(CSIZE | CSTOPB | PARENB | CRTSCTS);
 	termios.c_cflag |= CS8 | CREAD | CLOCAL;
 	termios.c_lflag &= ~(ECHO | ICANON | IEXTEN);
+	termios.c_cc[VMIN] = 1;
+	termios.c_cc[VTIME] = 0;
 
 	if(tcsetattr(fd, TCSANOW, &termios) < 0) {
 		perror("tcsetattr()");

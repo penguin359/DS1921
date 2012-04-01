@@ -13,6 +13,12 @@ dumplog.o: dumplog.c serial.h
 dumplog: dumplog.o serial.o
 	$(CC) $(CFLAGS) -o $@ $^
 
+xbee-monitor.o: xbee-monitor.c serial.h xbee.h
+	$(CC) $(CFLAGS) -c $<
+
+xbee-monitor: xbee-monitor.o serial.o xbee.o
+	$(CC) $(CFLAGS) -o $@ $^
+
 xbee.o: xbee.c xbee.h
 	$(CC) $(CFLAGS) -c $<
 
@@ -25,7 +31,10 @@ test-xbee: test-xbee.o xbee.o
 test: all
 	./test-xbee testfile
 
+tags:
+	ctags *.[ch]
+
 clean:
-	-rm -fr testfile dumplog.dSYM dumplog test-xbee.dSYM test-xbee *.o
+	-rm -fr testfile dumplog.dSYM dumplog tags test-xbee.dSYM test-xbee xbee-monitor *.o
 
 .PHONY: all clean test
