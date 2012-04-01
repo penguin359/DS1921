@@ -4,11 +4,14 @@ MAKE ?= make
 
 all: dumplog test-xbee
 
-dumplog: dumplog.o
-	$(CC) $(CFLAGS) -o $@ $^
-
-dumplog.o: dumplog.c
+serial.o: serial.c serial.h
 	$(CC) $(CFLAGS) -c $<
+
+dumplog.o: dumplog.c serial.h
+	$(CC) $(CFLAGS) -c $<
+
+dumplog: dumplog.o serial.o
+	$(CC) $(CFLAGS) -o $@ $^
 
 xbee.o: xbee.c xbee.h
 	$(CC) $(CFLAGS) -c $<
