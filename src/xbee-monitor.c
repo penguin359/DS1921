@@ -76,18 +76,18 @@ int main(int argc, char **argv)
 			perror("select()");
 			close(fd);
 			exit(1);
-		} else if(count == 0) {
-			printf("Nothing.\n");
+		//} else if(count == 0) {
+		//	printf("Nothing.\n");
 		}
 		if(!FD_ISSET(fd, &rfds)) {
-			printf("Odd, fd not set.\n");
+			fprintf(stderr, "Odd, fd not set.\n");
 			continue;
 		}
-		printf("I see data!\n");
+		//printf("I see data!\n");
 		while(1)
 			if(recvApi(xbee) < 0)
 				break;
-		printf("No more!\n");
+		//printf("No more!\n");
 		if(errno == EAGAIN)
 			continue;
 		break;

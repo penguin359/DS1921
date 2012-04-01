@@ -1,6 +1,9 @@
 #ifndef _XBEE_H_
 #define _XBEE_H_
 
+#include <stdint.h>
+
+
 typedef int bool;
 #define TRUE	1
 #define FALSE	0
@@ -50,6 +53,16 @@ typedef struct {
 	size_t bufLen;
 	size_t bufMaxLen;
 } xbee_t;
+
+typedef struct {
+	uint8_t		type;
+	macAddr_t	addr64;
+	uint16_t	addr16;
+	uint8_t		options;
+	uint16_t	net16;
+	macAddr_t	net64;
+	char		identifier[0];
+} __attribute((packed)) nodeIdentification_t;
 
 extern const macAddr_t broadcastAddr;
 extern const macAddr_t coordinatorAddr;

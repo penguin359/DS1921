@@ -196,6 +196,7 @@ bool escapeNextByte = FALSE;
 int processApi(unsigned char *buf, int len)
 {
 	int i;
+	nodeIdentification_t *identifier;
 
 	switch(buf[0]) {
 	case ZB_TX_API_CMD:
@@ -207,6 +208,7 @@ int processApi(unsigned char *buf, int len)
 		for(i = 12; i < len; i++)
 			fputc(buf[i], stdout);
 		fputc('\n', stdout);
+		return 0;
 		break;
 
 	case AT_API_CMD:
@@ -215,6 +217,12 @@ int processApi(unsigned char *buf, int len)
 
 	case AT_RESP_API_CMD:
 		printf("I spy an AT command response -> ");
+		break;
+
+	case NODE_IDENTIFICATION_API_CMD:
+		identifier = (nodeIdentification_t *)buf;
+		printf("I spy a node identification -> %s\n", identifier->identifier); //(char *)&buf[22]);
+		return 0;
 		break;
 
 	default:
