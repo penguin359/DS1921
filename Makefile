@@ -2,20 +2,13 @@ CC ?= gcc
 CFLAGS ?= -Wall -Werror -g
 MAKE ?= make
 
-all: xbee rrd
-	$(MAKE) -C rrd all
+all:
+	$(MAKE) -C src all
 
-xbee: xbee.o
-	$(CC) $(CFLAGS) -o $@ $^
-
-xbee.o: xbee.c
-	$(CC) $(CFLAGS) -c $^
-
-test: xbee
-	./xbee testfile
+test:
+	$(MAKE) -C src test
 
 clean:
-	-rm -fr testfile xbee.dSYM xbee *.o
-	$(MAKE) -C rrd clean
+	$(MAKE) -C src clean
 
 .PHONY: all clean test
