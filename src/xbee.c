@@ -10,6 +10,53 @@
 #include "xbee.h"
 
 
+#define MAX_NODES		1
+#define MAX_IDENTIFIER_LEN	20
+
+typedef enum {
+	UNUSED_NODE_STATUS,
+	SENSOR_NODE_STATUS,
+} nodeStatus_t;
+
+struct {
+	nodeStatus_t	status;
+	macAddr_t	addr64;
+	uint16_t	addr16;
+	char		identifier[MAX_IDENTIFIER_LEN];
+} nodes[MAX_NODES];
+
+int addNewNode(nodeIdentification_t *node)
+{
+	int freeNode = -1;
+	int i;
+
+	for(i = 0; i < MAX_NODES; i++) {
+		if(nodes[i].status == UNUSED_NODE_STATUS) {
+			if(freeNode < 0)
+				freeNode = i;
+			continue;
+		}
+		if(memcmp(&node->addr64, &nodes[i].addr64, sizeof(macAddr_t)) == 0) {
+			freeNode = i;
+			break;
+		}
+	}
+
+	if(freeNode < 0) {
+		fprintf(stderr, "No free slots for XBee nodes\n");
+		return -1;
+	}
+
+	nodes[i].status = SENSOR_NODE_STATUS;
+	memcpy(&nodes[i].addr64, &node->addr64, sizeof(macAddr_t));
+	memcpy(&nodes[i].addr16, &node->addr16, sizeof(uint16_t));
+	strncpy(nodes[i].identifier, node->identifier, MAX_IDENTIFIER_LEN);
+
+	printf("New node: %s\n", node->identifier);
+
+	return 0;
+}
+
 int writeChar(xbee_t *xbee, unsigned char c, int len)
 {
 	return write(xbee->fd, &c, sizeof(c));
@@ -196,7 +243,7 @@ bool escapeNextByte = FALSE;
 int processApi(unsigned char *buf, int len)
 {
 	int i;
-	nodeIdentification_t *identifier;
+	nodeIdentification_t *node;
 
 	switch(buf[0]) {
 	case ZB_TX_API_CMD:
@@ -220,8 +267,9 @@ int processApi(unsigned char *buf, int len)
 		break;
 
 	case NODE_IDENTIFICATION_API_CMD:
-		identifier = (nodeIdentification_t *)buf;
-		printf("I spy a node identification -> %s\n", identifier->identifier); //(char *)&buf[22]);
+		node = (nodeIdentification_t *)buf;
+		//printf("I spy a node identification -> %s\n", node->identifier); //(char *)&buf[22]);
+		addNewNode(node);
 		return 0;
 		break;
 
