@@ -1,4 +1,5 @@
 #include <OneWire.h>
+#include <XBee.h>
 
 // OneWire DS18S20, DS18B20, DS1822 Temperature Example
 //
@@ -74,17 +75,41 @@
 
 
 OneWire  ds(21);  // on pin 10
+
+class Dummy {
+	public:
+		void print(char *c) {}
+		void print(char *c, int i) {}
+		void print(int c) {}
+		void print(int c, int i) {}
+		void println(char *c) {}
+		void println(char *c, int i) {}
+		void println(int c) {}
+		void println(int c, int i) {}
+		int available() {return 0;}
+		int read() {return -1;}
+};
+
 //HardwareSerial Uart = HardwareSerial();
-//#define Serial Uart
+//#define debug Uart
+Dummy Dummy;
+//#define debug Dummy
+#define debug Serial
+
+XBee xbee = XBee();
+XBeeResponse response = XBeeResponse();
+ZBRxResponse rx = ZBRxResponse();
+ModemStatusResponse msr = ModemStatusResponse();
 
 unsigned long clock = 0;
 //elapsedMillis clockTick;
 unsigned long  clockTick;
 
 void setup(void) {
-  Serial.begin(9600);
+  //debug.begin(9600);
+  xbee.begin(9600);
   delay(5000);
-  Serial.println("Hello, World!");
+  //debug.println("Hello, World!");
   pinMode(LED_PIN, OUTPUT);
 }
 
@@ -170,15 +195,15 @@ void readDS1921(byte *addr, int target, byte *data, int len) {
 void clearDS1921(byte *addr) {
   byte control;
 
-  Serial.println("  Clearing memory...");
+  debug.println("  Clearing memory...");
   readDS1921(addr, DS1921_STATUS_REGISTER, &control, sizeof(control));
   if(control & DS1921_STATUS_MEMCLR)
-    Serial.println("  Memory previously cleared.");
+    debug.println("  Memory previously cleared.");
 
   readDS1921(addr, DS1921_CONTROL_REGISTER, &control, sizeof(control));
 
-  Serial.print("  Control = ");
-  Serial.println(control, HEX);
+  debug.print("  Control = ");
+  debug.println(control, HEX);
   control |= DS1921_CONTROL_EMCLR;
   control |= DS1921_CONTROL_RO;
 
@@ -190,12 +215,12 @@ void clearDS1921(byte *addr) {
   delayMicroseconds(550);
 
   readDS1921(addr, DS1921_STATUS_REGISTER, &control, sizeof(control));
-  Serial.print("  Status = ");
-  Serial.println(control, HEX);
+  debug.print("  Status = ");
+  debug.println(control, HEX);
   if(control & DS1921_STATUS_MEMCLR)
-    Serial.println("  Memory cleared successfully.");
+    debug.println("  Memory cleared successfully.");
   else
-    Serial.println("  Failed to clear memory!");
+    debug.println("  Failed to clear memory!");
 }
 
 void stopMission(byte *addr) {
@@ -223,10 +248,10 @@ void parseSerial(char c) {
 
   int i;
 
-  Serial.print("S=");
-  Serial.print(state, DEC);
-  Serial.print(": ");
-  Serial.println(c);
+  debug.print("S=");
+  debug.print(state, DEC);
+  debug.print(": ");
+  debug.println(c);
   switch(state) {
     case HOME_STATE:
       if(c == 'D') {
@@ -247,36 +272,36 @@ void parseSerial(char c) {
 
     case D_STATE:
       if(c == '\n') {
-	Serial.println("STARTLOG");
+	debug.println("STARTLOG");
 	readDS1921(addr, DS1921_MISSION_TIMESTAMP, rtcBuf, 5);
-	Serial.print("Time=20");
-	Serial.print(rtcBuf[4], HEX);
-	Serial.print("-");
-	Serial.print(rtcBuf[3], HEX);
-	Serial.print("-");
-	Serial.print(rtcBuf[2], HEX);
-	Serial.print("T");
-	Serial.print(rtcBuf[1], HEX);
-	Serial.print(":");
-	Serial.print(rtcBuf[0], HEX);
-	Serial.println(":00Z");
+	debug.print("Time=20");
+	debug.print(rtcBuf[4], HEX);
+	debug.print("-");
+	debug.print(rtcBuf[3], HEX);
+	debug.print("-");
+	debug.print(rtcBuf[2], HEX);
+	debug.print("T");
+	debug.print(rtcBuf[1], HEX);
+	debug.print(":");
+	debug.print(rtcBuf[0], HEX);
+	debug.println(":00Z");
 
 	long count = 0;
 	byte countBytes[3];
 	readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
 	count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
-	Serial.print("Count=");
-	Serial.println(count, DEC);
+	debug.print("Count=");
+	debug.println(count, DEC);
 
 	readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
-	Serial.println("LOG");
+	debug.println("LOG");
 	if(count > 2048)
 		count = 2048;
 	while(count-- > 0) {
-	  Serial.print("    ");
-	  Serial.println(ds.read(), DEC);
+	  debug.print("    ");
+	  debug.println(ds.read(), DEC);
 	}
-	Serial.println("ENDLOG");
+	debug.println("ENDLOG");
 	state = HOME_STATE;
 	break;
       }
@@ -293,8 +318,8 @@ void parseSerial(char c) {
       }
 
       clock = val;
-      Serial.print("Time set to ");
-      Serial.println(clock, DEC);
+      debug.print("Time set to ");
+      debug.println(clock, DEC);
       state = HOME_STATE;
       break;
 
@@ -318,111 +343,111 @@ void parseSerial(char c) {
 
     case RTC_STATE:
       if(c == '\n') {
-	Serial.println("rtc time is ...");
+	debug.println("rtc time is ...");
 	readDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
-	Serial.print("20");
-	Serial.print((unsigned char)rtcBuf[6], HEX);
-	Serial.print("-");
-	Serial.print((unsigned char)rtcBuf[5] & ~0x80, HEX);
-	Serial.print("-");
-	Serial.print((unsigned char)rtcBuf[4], HEX);
-	Serial.print("T");
-	Serial.print((unsigned char)rtcBuf[2], HEX);
-	Serial.print(":");
-	Serial.print((unsigned char)rtcBuf[1], HEX);
-	Serial.print(":");
-	Serial.print((unsigned char)rtcBuf[0], HEX);
-	Serial.println("Z");
+	debug.print("20");
+	debug.print((unsigned char)rtcBuf[6], HEX);
+	debug.print("-");
+	debug.print((unsigned char)rtcBuf[5] & ~0x80, HEX);
+	debug.print("-");
+	debug.print((unsigned char)rtcBuf[4], HEX);
+	debug.print("T");
+	debug.print((unsigned char)rtcBuf[2], HEX);
+	debug.print(":");
+	debug.print((unsigned char)rtcBuf[1], HEX);
+	debug.print(":");
+	debug.print((unsigned char)rtcBuf[0], HEX);
+	debug.println("Z");
 	state = HOME_STATE;
 	break;
       } else {
 	memset(rtcBuf, 0, sizeof(rtcBuf));
 	/* discard 2 */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard 0 */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[6] = (c & ~0x30) << 4;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[6] |= (c & ~0x30);
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard - */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[5] = (c & ~0x30) << 4;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[5] |= (c & ~0x30);
 	rtcBuf[5] |= 0x80;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard - */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[4] = (c & ~0x30) << 4;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[4] |= (c & ~0x30);
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard T */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[2] = (c & ~0x30) << 4;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[2] |= (c & ~0x30);
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard : */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[1] = (c & ~0x30) << 4;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[1] |= (c & ~0x30);
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard : */
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[0] = (c & ~0x30) << 4;
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	rtcBuf[0] |= (c & ~0x30);
-	while(!Serial.available())
+	while(!debug.available())
 	  ;
-	c = Serial.read();
+	c = debug.read();
 	/* discard '\n' */
 	rtcBuf[3] = 1; /* day of week (1-7) */
-	Serial.print("  Set RTC = 20");
+	debug.print("  Set RTC = 20");
 	for(i = 6; i >= 0; i--) {
-	  Serial.print(rtcBuf[i], HEX);
-	  Serial.print(" ");
+	  debug.print(rtcBuf[i], HEX);
+	  debug.print(" ");
 	}
-	Serial.println("");
-	Serial.println("  Updating RTC...");
+	debug.println("");
+	debug.println("  Updating RTC...");
 	writeDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
       }
 
@@ -461,18 +486,39 @@ void loop(void) {
   if(currentMillis - clockTick >= 1000UL) {
 	  clockTick += 1000UL;
 	  clock++;
-	  Serial.print("Time=");
-	  Serial.println(clock, DEC);
+	  debug.print("UTime=");
+	  debug.println(clock, DEC);
   }
 
-  if(Serial.available()) {
-    parseSerial(Serial.read());
+  if(debug.available()) {
+    parseSerial(debug.read());
+  }
+
+  xbee.readPacket();
+  if(xbee.getResponse().isAvailable()) {
+      switch(xbee.getResponse().getApiId()) {
+      case ZB_RX_RESPONSE:
+	      debug.print("ZB RZ");
+        if (rx.getOption() == ZB_PACKET_ACKNOWLEDGED) {
+		debug.print(" (ACK)");
+	}
+	debug.println("");
+	break;
+
+      case MODEM_STATUS_RESPONSE:
+	debug.println("MODEM");
+	break;
+
+      default:
+	debug.println("Unknown");
+	break;
+      }
   }
 
 #if 0
   if ( !ds.search(addr)) {
-    //Serial.println("No more addresses.");
-    Serial.println();
+    //debug.println("No more addresses.");
+    debug.println();
     ds.reset_search();
     delay(250);
     delay(1250);
@@ -480,41 +526,41 @@ void loop(void) {
   }
 
 #if 0
-  Serial.print("ROM =");
+  debug.print("ROM =");
   for( i = 0; i < 8; i++) {
-    Serial.write(' ');
-    Serial.print(addr[i], HEX);
+    debug.write(' ');
+    debug.print(addr[i], HEX);
   }
 #endif
 
   if (OneWire::crc8(addr, 7) != addr[7]) {
-      Serial.println("CRC is not valid!");
+      debug.println("CRC is not valid!");
       return;
   }
-  Serial.println();
+  debug.println();
  
    type_19 = 0;
   // the first ROM byte indicates which chip
   switch (addr[0]) {
     case 0x10:
-      Serial.println("  Chip = DS18S20");  // or old DS1820
+      debug.println("  Chip = DS18S20");  // or old DS1820
       type_s = 1;
       break;
     case 0x28:
-      Serial.println("  Chip = DS18B20");
+      debug.println("  Chip = DS18B20");
       type_s = 0;
       break;
     case 0x22:
-      Serial.println("  Chip = DS1822");
+      debug.println("  Chip = DS1822");
       type_s = 0;
       break;
     case 0x21:
-      Serial.println("  Chip = DS1921G");
+      debug.println("  Chip = DS1921G");
       type_19 = 1;
       break;
     default:
 #if 0
-      Serial.println("Device is not a DS18x20 family device.");
+      debug.println("Device is not a DS18x20 family device.");
 #endif
       return;
   } 
@@ -533,12 +579,12 @@ void loop(void) {
 #if 0
     ds.write(0x00);
     ds.write(0x02);
-    Serial.print("  Clock =");
+    debug.print("  Clock =");
     for(i = 0x00; i <= 0x0A; i++) {
-      Serial.print(" ");
-      Serial.print(ds.read(), HEX);
+      debug.print(" ");
+      debug.print(ds.read(), HEX);
     }
-    Serial.println("");
+    debug.println("");
     for( ; i < 0x11; i++)
       ds.read();
 #else
@@ -547,10 +593,10 @@ void loop(void) {
 #endif
     data[0] = ds.read();
 #if 0
-    Serial.print("  Data = ");
-    Serial.print(present,HEX);
-    Serial.print(" ");
-    Serial.println(data[0], HEX);
+    debug.print("  Data = ");
+    debug.print(present,HEX);
+    debug.print(" ");
+    debug.println(data[0], HEX);
 #endif
     celsius = (float)data[0] / 2.0f - 40.0f;
 
@@ -558,19 +604,19 @@ void loop(void) {
     if(!writeRtc) {
       byte sampleRate;
       readDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
-      Serial.print("  sample rate = ");
-      Serial.println(sampleRate, DEC);
+      debug.print("  sample rate = ");
+      debug.println(sampleRate, DEC);
       readDS1921(addr, DS1921_STATUS_REGISTER, &sampleRate, sizeof(sampleRate));
       if(sampleRate & DS1921_STATUS_MIP) {
-	Serial.println("  Mission in progress.");
+	debug.println("  Mission in progress.");
 	writeRtc = 1;
 	return;
       }
       clearDS1921(addr);
-      Serial.println("  Starting a mission.");
+      debug.println("  Starting a mission.");
       sampleRate = 1;
       writeDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
-      //Serial.println("  Updating RTC...");
+      //debug.println("  Updating RTC...");
       //writeDS1921(addr, DS1921_RTC_REGISTER, rtc, sizeof(rtc));
       writeRtc = 1;
     }
@@ -580,54 +626,54 @@ void loop(void) {
 
     readDS1921(addr, DS1921_DEVICE_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
     count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
-    Serial.print("  Device samples = ");
-    Serial.println(count, DEC);
+    debug.print("  Device samples = ");
+    debug.println(count, DEC);
 
     readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
     count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
-    Serial.print("  Mission samples = ");
-    Serial.println(count, DEC);
+    debug.print("  Mission samples = ");
+    debug.println(count, DEC);
     readDS1921(addr, DS1921_MISSION_TIMESTAMP, rtc, 5);
-    Serial.print("  Mission timestamp = 20");
+    debug.print("  Mission timestamp = 20");
     //for(i = 4; i >= 0; i--) {
-    //  Serial.print(rtc[i], HEX);
-    //  Serial.print(" ");
+    //  debug.print(rtc[i], HEX);
+    //  debug.print(" ");
     //}
     for(i = 0; i < 5; i++) {
-      Serial.print(rtc[4-i], HEX);
-      Serial.print(" ");
+      debug.print(rtc[4-i], HEX);
+      debug.print(" ");
     }
-    Serial.println("");
+    debug.println("");
     readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
-    Serial.println("  Data log:");
+    debug.println("  Data log:");
     if(count > 2048)
 	    count = 2048;
     count = 4;
     while(count-- > 0) {
-      Serial.print("    ");
-      Serial.println(ds.read(), DEC);
+      debug.print("    ");
+      debug.println(ds.read(), DEC);
     }
-    Serial.println("");
+    debug.println("");
 #endif
   } else {
     ds.write(DS18B20_READ_SCRATCHPAD);
 
 #if 0
-  Serial.print("  Data = ");
-  Serial.print(present,HEX);
-  Serial.print(" ");
+  debug.print("  Data = ");
+  debug.print(present,HEX);
+  debug.print(" ");
 #endif
   for ( i = 0; i < 9; i++) {           // we need 9 bytes
     data[i] = ds.read();
 #if 0
-    Serial.print(data[i], HEX);
-    Serial.print(" ");
+    debug.print(data[i], HEX);
+    debug.print(" ");
 #endif
   }
 #if 0
-  Serial.print(" CRC=");
-  Serial.print(OneWire::crc8(data, 8), HEX);
-  Serial.println();
+  debug.print(" CRC=");
+  debug.print(OneWire::crc8(data, 8), HEX);
+  debug.println();
 #endif
 
   // convert the data to actual temperature
@@ -649,20 +695,20 @@ void loop(void) {
   celsius = (float)raw / 16.0;
   }
   if(celsius < 8. || celsius > 58.) {
-	  Serial.println("ALARM!");
+	  debug.println("ALARM!");
 	  alarm = 1;
 	  ledOn();
   } else {
 	  ledOff();
   }
   fahrenheit = celsius * 1.8 + 32.0;
-  //Serial.print("  ATemperature = ");
-  Serial.print("  T=");
-  Serial.print(celsius);
-  //Serial.print(" Celsius, ");
-  Serial.print("C, ");
-  Serial.print(fahrenheit);
-  //Serial.println(" Fahrenheit");
-  Serial.println("F");
+  //debug.print("  ATemperature = ");
+  debug.print("  T=");
+  debug.print(celsius);
+  //debug.print(" Celsius, ");
+  debug.print("C, ");
+  debug.print(fahrenheit);
+  //debug.println(" Fahrenheit");
+  debug.println("F");
 #endif
 }
