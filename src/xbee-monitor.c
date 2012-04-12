@@ -10,6 +10,7 @@
 
 #include "serial.h"
 #include "xbee.h"
+#include "sensor.h"
 
 
 int main(int argc, char **argv)

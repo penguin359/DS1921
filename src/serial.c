@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <termios.h>
 //#include <sys/select.h>
+#include <sys/stat.h>
 
 #include "serial.h"
 
@@ -14,6 +15,7 @@
 int openSerial(char *file)
 {
 	struct termios termios, savedTermios;
+	struct stat stat;
 	int fd;
 
 	printf("Opening...\n");
@@ -21,6 +23,15 @@ int openSerial(char *file)
 		perror("open()");
 		exit(1);
 	}
+
+	if(fstat(fd, &stat) < 0) {
+		perror("stat()");
+		close(fd);
+		exit(1);
+	}
+
+	if((stat.st_mode & S_IFMT) != S_IFCHR)
+		return fd;
 
 	printf("Setting...\n");
 	if(tcgetattr(fd, &termios) < 0) {

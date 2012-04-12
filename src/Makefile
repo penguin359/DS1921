@@ -13,19 +13,19 @@ dumplog.o: dumplog.c serial.h
 dumplog: dumplog.o serial.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-xbee-monitor.o: xbee-monitor.c serial.h xbee.h
+xbee-monitor.o: xbee-monitor.c serial.h xbee.h sensor.h
 	$(CC) $(CFLAGS) -c $<
 
-xbee-monitor: xbee-monitor.o serial.o xbee.o
+xbee-monitor: xbee-monitor.o serial.o xbee.o sensor.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 xbee.o: xbee.c xbee.h
 	$(CC) $(CFLAGS) -c $<
 
-test-xbee.o: test-xbee.c xbee.h
+test-xbee.o: test-xbee.c xbee.h sensor.h
 	$(CC) $(CFLAGS) -c $<
 
-test-xbee: test-xbee.o xbee.o
+test-xbee: test-xbee.o xbee.o sensor.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 test: all

@@ -7,13 +7,14 @@
 //#include <sys/stat.h>
 
 #include "xbee.h"
+#include "sensor.h"
 
 
 int main(int argc, char **argv)
 {
 	xbee_t xbeeDevice;
 	xbee_t *xbee = &xbeeDevice;
-	macAddr_t addr = { { 1, 2, 3, 4, 5, 6, 7, 8 } };
+	macAddr64_t addr = { { 1, 2, 3, 4, 5, 6, 7, 8 } };
 	char *str = "Hello, World!";
 
 	if(argc < 2) {
@@ -54,13 +55,18 @@ int main(int argc, char **argv)
 		close(xbee->fd);
 		exit(1);
 	}
-	if(sendTx(xbee, addr, str, strlen(str)) < 0) {
+	if(sendTx(xbee, &addr, str, strlen(str)) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
 		close(xbee->fd);
 		exit(1);
 	}
-	if(sendRemoteAt(xbee, addr, "AO", TRUE) < 0) {
+	if(sendRemoteAt(xbee, &addr, "AO", TRUE) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
+		close(xbee->fd);
+		exit(1);
+	}
+	if(sendTime(xbee, &addr) < 0) {
+		fprintf(stderr, "Error sending time packet\n");
 		close(xbee->fd);
 		exit(1);
 	}

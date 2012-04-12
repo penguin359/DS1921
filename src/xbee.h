@@ -42,9 +42,14 @@ typedef int bool;
 #define SERIAL_HIGH_AT_CMD	"SH"
 #define SERIAL_LOW_AT_CMD	"SL"
 
+
+#define UNKNOWN_ADDR16		0xfffe
+
 typedef struct {
 	unsigned char addr[8];
-} macAddr_t;
+} macAddr64_t;
+
+typedef uint16_t macAddr16_t;
 
 typedef struct {
 	int fd;
@@ -56,23 +61,23 @@ typedef struct {
 
 typedef struct {
 	uint8_t		type;
-	macAddr_t	addr64;
-	uint16_t	addr16;
+	macAddr64_t	addr64;
+	macAddr16_t	addr16;
 	uint8_t		options;
-	uint16_t	net16;
-	macAddr_t	net64;
+	macAddr16_t	net16;
+	macAddr64_t	net64;
 	char		identifier[0];
 } __attribute((packed)) nodeIdentification_t;
 
-extern const macAddr_t broadcastAddr;
-extern const macAddr_t coordinatorAddr;
+extern const macAddr64_t broadcastAddr;
+extern const macAddr64_t coordinatorAddr;
 
 void initNodes(void);
 
 int sendApi(xbee_t *xbee, char *data, int len);
 int sendAt(xbee_t *xbee, char *cmd, bool queue);
-int sendRemoteAt(xbee_t *xbee, macAddr_t addr, char *cmd, bool queue);
-int sendTx(xbee_t *xbee, macAddr_t addr, void *data, int len);
+int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue);
+int sendTx(xbee_t *xbee, macAddr64_t *addr64, void *data, int len);
 int recvApi(xbee_t *xbee);
 
 #endif /* _XBEE_H_ */

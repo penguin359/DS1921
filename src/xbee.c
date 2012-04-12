@@ -18,12 +18,14 @@ typedef enum {
 	SENSOR_NODE_STATUS,
 } nodeStatus_t;
 
-struct {
+typedef struct {
 	nodeStatus_t	status;
-	macAddr_t	addr64;
-	uint16_t	addr16;
+	macAddr64_t	addr64;
+	macAddr16_t	addr16;
 	char		identifier[MAX_IDENTIFIER_LEN];
-} nodes[MAX_NODES];
+} node_t;
+
+node_t nodes[MAX_NODES];
 
 int addNewNode(nodeIdentification_t *node)
 {
@@ -36,7 +38,7 @@ int addNewNode(nodeIdentification_t *node)
 				freeNode = i;
 			continue;
 		}
-		if(memcmp(&node->addr64, &nodes[i].addr64, sizeof(macAddr_t)) == 0) {
+		if(memcmp(&node->addr64, &nodes[i].addr64, sizeof(macAddr64_t)) == 0) {
 			freeNode = i;
 			break;
 		}
@@ -48,13 +50,26 @@ int addNewNode(nodeIdentification_t *node)
 	}
 
 	nodes[freeNode].status = SENSOR_NODE_STATUS;
-	memcpy(&nodes[freeNode].addr64, &node->addr64, sizeof(macAddr_t));
-	memcpy(&nodes[freeNode].addr16, &node->addr16, sizeof(uint16_t));
+	memcpy(&nodes[freeNode].addr64, &node->addr64, sizeof(macAddr64_t));
+	memcpy(&nodes[freeNode].addr16, &node->addr16, sizeof(macAddr16_t));
 	strncpy(nodes[freeNode].identifier, node->identifier, MAX_IDENTIFIER_LEN);
 
 	printf("New node: %s\n", node->identifier);
 
 	return 0;
+}
+
+node_t *findNodeByAddr64(macAddr64_t *addr64)
+{
+	int i;
+
+	for(i = 0; i < MAX_NODES; i++)
+		if(memcmp(addr64, &nodes[i].addr64, sizeof(macAddr64_t)) == 0)
+			break;
+	if(i >= MAX_NODES)
+		return NULL;
+
+	return &nodes[i];
 }
 
 void initNodes(void)
@@ -129,15 +144,21 @@ int sendApiCmd(xbee_t *xbee, int type, bool ack)
 	return 0;
 }
 
-int sendApiAddr(xbee_t *xbee, macAddr_t *addr)
+int sendApiAddr(xbee_t *xbee, macAddr64_t *addr64)
 {
-	if(xbee->bufMaxLen - xbee->bufLen < sizeof(macAddr_t)+2)
+	macAddr16_t addr16 = UNKNOWN_ADDR16;
+	node_t *node;
+
+	if(xbee->bufMaxLen - xbee->bufLen < sizeof(macAddr64_t)+2)
 		return -1;
 
-	memcpy(&xbee->buf[xbee->bufLen], addr, sizeof(macAddr_t));
-	xbee->bufLen += sizeof(macAddr_t);
-	xbee->buf[xbee->bufLen++] = 0xff; /* 16-bit destination address */
-	xbee->buf[xbee->bufLen++] = 0xfe; /* FFFE means unknown */
+	if((node = findNodeByAddr64(addr64)) != NULL)
+		addr16 = node->addr16;
+
+	memcpy(&xbee->buf[xbee->bufLen], addr64, sizeof(macAddr64_t));
+	xbee->bufLen += sizeof(macAddr64_t);
+	xbee->buf[xbee->bufLen++] = (addr16 >> 8) & 0xff;
+	xbee->buf[xbee->bufLen++] = (addr16 >> 0) & 0xff;
 
 	return 0;
 }
@@ -160,14 +181,14 @@ int sendAt(xbee_t *xbee, char *cmd, bool queue)
 	return sendApi(xbee, buf, bufLen);
 }
 
-int sendRemoteAt(xbee_t *xbee, macAddr_t addr, char *cmd, bool queue)
+int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue)
 {
 	int options = 0;
 
 	if(queue)
 		options = 0x02;
 	sendApiCmd(xbee, REMOTE_AT_API_CMD, TRUE);
-	sendApiAddr(xbee, &addr);
+	sendApiAddr(xbee, addr64);
 	xbee->buf[xbee->bufLen++] = options;
 	xbee->buf[xbee->bufLen++] = cmd[0];
 	xbee->buf[xbee->bufLen++] = cmd[1];
@@ -175,7 +196,7 @@ int sendRemoteAt(xbee_t *xbee, macAddr_t addr, char *cmd, bool queue)
 	return sendApi(xbee, xbee->buf, xbee->bufLen);
 }
 
-int sendTx(xbee_t *xbee, macAddr_t addr, void *data, int len)
+int sendTx(xbee_t *xbee, macAddr64_t *addr64, void *data, int len)
 {
 	char buf[128], *bufPtr = buf;
 	int bufLen = 0;
@@ -185,8 +206,8 @@ int sendTx(xbee_t *xbee, macAddr_t addr, void *data, int len)
 	xbee->frameId++;
 	if(xbee->frameId <= 0 || xbee->frameId > 255)
 		xbee->frameId = 1;
-	memcpy(bufPtr, &addr, sizeof(addr));
-	bufPtr += sizeof(addr); bufLen += sizeof(addr);
+	memcpy(bufPtr, addr64, sizeof(addr64));
+	bufPtr += sizeof(addr64); bufLen += sizeof(addr64);
 	*bufPtr++ = 0xff; bufLen++; /* 16-bit destination address */
 	*bufPtr++ = 0xfe; bufLen++;
 	*bufPtr++ = 0x00; bufLen++; /* broadcast radius */
@@ -200,7 +221,7 @@ int sendTx(xbee_t *xbee, macAddr_t addr, void *data, int len)
 	return sendApi(xbee, buf, bufLen);
 }
 
-int sendTxExplicit(xbee_t *xbee, macAddr_t addr, void *data, int len, int srcEndpoint, int dstEndpoint, int clusterId, int profileId)
+int sendTxExplicit(xbee_t *xbee, macAddr64_t *addr64, void *data, int len, int srcEndpoint, int dstEndpoint, int clusterId, int profileId)
 {
 	char buf[128], *bufPtr = buf;
 	int bufLen = 0;
@@ -210,8 +231,8 @@ int sendTxExplicit(xbee_t *xbee, macAddr_t addr, void *data, int len, int srcEnd
 	xbee->frameId++;
 	if(xbee->frameId <= 0 || xbee->frameId > 255)
 		xbee->frameId = 1;
-	memcpy(bufPtr, &addr, sizeof(addr));
-	bufPtr += sizeof(addr); bufLen += sizeof(addr);
+	memcpy(bufPtr, addr64, sizeof(addr64));
+	bufPtr += sizeof(addr64); bufLen += sizeof(addr64);
 	*bufPtr++ = 0xff; bufLen++; /* 16-bit destination address */
 	*bufPtr++ = 0xfe; bufLen++;
 	*bufPtr++ = srcEndpoint; bufLen++;
@@ -381,5 +402,5 @@ int recvApi(xbee_t *xbee)
 	return 0;
 }
 
-const macAddr_t broadcastAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff }};
-const macAddr_t coordinatorAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }};
+const macAddr64_t broadcastAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff }};
+const macAddr64_t coordinatorAddr = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }};
