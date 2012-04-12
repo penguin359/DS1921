@@ -100,6 +100,8 @@ XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 ModemStatusResponse msr = ModemStatusResponse();
+XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
+uint8_t payload[] = { 'H', 'i' };
 
 unsigned long clock = 0;
 //elapsedMillis clockTick;
@@ -488,6 +490,8 @@ void loop(void) {
 	  clock++;
 	  debug.print("UTime=");
 	  debug.println(clock, DEC);
+	  ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
+	  xbee.send(zbTx);
   }
 
   if(debug.available()) {
@@ -507,6 +511,9 @@ void loop(void) {
 
       case MODEM_STATUS_RESPONSE:
 	debug.println("MODEM");
+	xbee.getResponse().getModemStatusResponse(msr);
+	if(msr.getStatus() == ASSOCIATED)
+		debug.println("ASSOCIATED");
 	break;
 
       default:
