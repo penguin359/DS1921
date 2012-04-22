@@ -75,6 +75,15 @@
 #define ledOff()			digitalWrite(LED_PIN, LOW);
 
 
+#define TEENSY
+
+#ifdef TEENSY
+#define AREF_MV				5000.
+#else
+#define AREF_MV				3300.
+#endif
+
+
 OneWire  ds(21);  // on pin 10
 
 class Dummy {
@@ -93,9 +102,12 @@ class Dummy {
 
 //HardwareSerial Uart = HardwareSerial();
 //#define debug Uart
-Dummy Dummy;
-//#define debug Dummy
+#ifdef TEENSY
 #define debug Serial
+#else
+Dummy Dummy;
+#define debug Dummy
+#endif
 
 XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
@@ -487,14 +499,34 @@ byte rtc[] = {
 
 int writeRtc = 0;
 
-void loop(void) {
+void printTemp(float celsius) {
   static int alarm = 0;
+  float fahrenheit;
+  if(celsius < 8. || celsius > 58.) {
+	  debug.println("ALARM!");
+	  alarm = 1;
+	  ledOn();
+  } else {
+	  ledOff();
+  }
+  fahrenheit = celsius * 1.8 + 32.0;
+  //debug.print("  ATemperature = ");
+  debug.print("  T=");
+  debug.print(celsius);
+  //debug.print(" Celsius, ");
+  debug.print("C, ");
+  debug.print(fahrenheit);
+  //debug.println(" Fahrenheit");
+  debug.println("F");
+}
+
+void loop(void) {
   byte i;
   byte present = 0;
   byte type_s, type_19;
   byte data[12];
   //byte addr[8];
-  float celsius, fahrenheit;
+  float celsius;
 
   unsigned long currentMillis = millis();
   if(currentMillis - clockTick >= 1000UL) {
@@ -537,9 +569,10 @@ void loop(void) {
 #if 1
   delay(2000);
   long val = analogRead(A1);
-  celsius = ((float)val / 1023. * 5000. - 500.)/10.;
+  celsius = ((float)val / 1023. * AREF_MV - 500.)/10.;
   debug.print("ADC Val: ");
   debug.println(val, DEC);
+  printTemp(celsius);
 
   Wire.beginTransmission(0x4f);
   Wire.write(0);
@@ -548,9 +581,10 @@ void loop(void) {
   val = Wire.read() << 8;
   val |= Wire.read();
   val >>= 4;
+  celsius = (float)val * 0.0625;
   debug.print("I2C Val: ");
   debug.println(val, DEC);
-  celsius = (float)val * 0.0625;
+  printTemp(celsius);
 #if 0
   if ( !ds.search(addr)) {
     //debug.println("No more addresses.");
@@ -730,22 +764,7 @@ void loop(void) {
   }
   celsius = (float)raw / 16.0;
   }
+  printTemp(celsius);
 #endif
-  if(celsius < 8. || celsius > 58.) {
-	  debug.println("ALARM!");
-	  alarm = 1;
-	  ledOn();
-  } else {
-	  ledOff();
-  }
-  fahrenheit = celsius * 1.8 + 32.0;
-  //debug.print("  ATemperature = ");
-  debug.print("  T=");
-  debug.print(celsius);
-  //debug.print(" Celsius, ");
-  debug.print("C, ");
-  debug.print(fahrenheit);
-  //debug.println(" Fahrenheit");
-  debug.println("F");
 #endif
 }
