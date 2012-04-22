@@ -1,5 +1,6 @@
 #include <OneWire.h>
 #include <XBee.h>
+#include <Wire.h>
 
 // OneWire DS18S20, DS18B20, DS1822 Temperature Example
 //
@@ -107,6 +108,9 @@ unsigned long clock = 0;
 //elapsedMillis clockTick;
 unsigned long  clockTick;
 
+#define D0 5
+#define D1 6
+
 void setup(void) {
   //debug.begin(9600);
   xbee.begin(9600);
@@ -116,6 +120,11 @@ void setup(void) {
   analogReference(DEFAULT);
   pinMode(A1, INPUT);
   digitalWrite(A1, LOW);
+  pinMode(D0, INPUT);
+  pinMode(D1, INPUT);
+  digitalWrite(D0, HIGH); /* Turn on pull-ups */
+  digitalWrite(D1, HIGH);
+  Wire.begin();
 }
 
 void writeDS18B20(byte *addr, byte high, byte low, byte config) {
@@ -529,8 +538,19 @@ void loop(void) {
   delay(2000);
   long val = analogRead(A1);
   celsius = ((float)val / 1023. * 5000. - 500.)/10.;
-  debug.print("Val: ");
+  debug.print("ADC Val: ");
   debug.println(val, DEC);
+
+  Wire.beginTransmission(0x4f);
+  Wire.write(0);
+  Wire.endTransmission();
+  Wire.requestFrom(0x4f, 2);
+  val = Wire.read() << 8;
+  val |= Wire.read();
+  val >>= 4;
+  debug.print("I2C Val: ");
+  debug.println(val, DEC);
+  celsius = (float)val * 0.0625;
 #if 0
   if ( !ds.search(addr)) {
     //debug.println("No more addresses.");
