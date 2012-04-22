@@ -113,6 +113,9 @@ void setup(void) {
   delay(5000);
   //debug.println("Hello, World!");
   pinMode(LED_PIN, OUTPUT);
+  analogReference(DEFAULT);
+  pinMode(A1, INPUT);
+  digitalWrite(A1, LOW);
 }
 
 void writeDS18B20(byte *addr, byte high, byte low, byte config) {
@@ -522,6 +525,12 @@ void loop(void) {
       }
   }
 
+#if 1
+  delay(2000);
+  long val = analogRead(A1);
+  celsius = ((float)val / 1023. * 5000. - 500.)/10.;
+  debug.print("Val: ");
+  debug.println(val, DEC);
 #if 0
   if ( !ds.search(addr)) {
     //debug.println("No more addresses.");
@@ -701,6 +710,7 @@ void loop(void) {
   }
   celsius = (float)raw / 16.0;
   }
+#endif
   if(celsius < 8. || celsius > 58.) {
 	  debug.println("ALARM!");
 	  alarm = 1;
