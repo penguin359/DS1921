@@ -115,6 +115,7 @@ Dummy Dummy;
 XBee xbee = XBee();
 //XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
+ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
 uint8_t payload[] = { 'H', 'i' };
@@ -560,7 +561,7 @@ void loop(void) {
 	  debug.println("]");
   }
 #else
-  xbee.readPacket(200);
+  xbee.readPacket(2000);
   if(xbee.getResponse().isAvailable()) {
       switch(xbee.getResponse().getApiId()) {
       case ZB_RX_RESPONSE:
@@ -576,6 +577,19 @@ void loop(void) {
 		debug.print(" (ACK)");
 	}
 	debug.println("");
+	break;
+
+      case ZB_TX_STATUS_RESPONSE:
+	debug.print("ZB TX Status: ");
+	xbee.getResponse().getZBTxStatusResponse(txStatus);
+	if(txStatus.getDeliveryStatus() == 0) {
+		debug.print("Success with ");
+		debug.print(txStatus.getTxRetryCount());
+		debug.println(" retries");
+	} else {
+		debug.print("Failed with status ");
+		debug.println(txStatus.getDeliveryStatus(), HEX);
+	}
 	break;
 
       case MODEM_STATUS_RESPONSE:
@@ -596,7 +610,7 @@ void loop(void) {
 #endif
 
 #if 1
-  delay(2000);
+  //delay(2000);
   long val = analogRead(A1);
   celsius = ((float)val / 1023. * AREF_MV - 500.)/10.;
   debug.print("ADC Val: ");
