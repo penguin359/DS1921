@@ -57,7 +57,7 @@ int main(int argc, char **argv)
 	time_t lastTime = 0, currentTime;
 	while(1) {
 		time(&currentTime);
-		if(currentTime >= lastTime + 60) {
+		if(currentTime >= lastTime + 10) {
 			startNodeSearch();
 			while((node = findNextNode()) != NULL)
 				sendTime(xbee, &node->addr64);
