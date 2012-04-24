@@ -2,7 +2,7 @@ CC ?= gcc
 CFLAGS ?= -Wall -Werror -g
 MAKE ?= make
 
-all: dumplog test-xbee xbee-monitor
+all: dumplog http test-xbee xbee-monitor
 
 serial.o: serial.c serial.h
 	$(CC) $(CFLAGS) -c $<
@@ -11,6 +11,12 @@ dumplog.o: dumplog.c serial.h
 	$(CC) $(CFLAGS) -c $<
 
 dumplog: dumplog.o serial.o
+	$(CC) $(CFLAGS) -o $@ $^
+
+http.o: http.c
+	$(CC) $(CFLAGS) -c $<
+
+http: http.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 xbee-monitor.o: xbee-monitor.c serial.h xbee.h sensor.h

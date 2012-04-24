@@ -5,6 +5,7 @@
 /src/*.rrd
 /src/dumplog
 /src/dumplog.dSYM/
+/src/http
 /src/testfile
 /src/test-xbee
 /src/test-xbee.dSYM/
