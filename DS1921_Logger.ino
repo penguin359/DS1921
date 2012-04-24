@@ -119,9 +119,10 @@ ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
 uint8_t payload[] = { 'H', 'i' };
+uint8_t sensorPayload[] = { 'S', 'e', 'n', 's', 'o', 'r', '-' };
 #endif
 
-unsigned long clock = 0;
+uint32_t clock = 0;
 //elapsedMillis clockTick;
 unsigned long  clockTick;
 
@@ -530,12 +531,14 @@ void printTemp(float celsius) {
 }
 
 void loop(void) {
+  ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
   byte i;
   byte present = 0;
   byte type_s, type_19;
   byte data[12];
   //byte addr[8];
   float celsius;
+  byte *dataPtr;
 
   unsigned long currentMillis = millis();
   if(currentMillis - clockTick >= 1000UL) {
@@ -544,7 +547,8 @@ void loop(void) {
 	  debug.print("UTime=");
 	  debug.println(clock, DEC);
 #ifndef DEBUG_XBEE
-	  ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
+	  zbTx.setPayload(payload);
+	  zbTx.setPayloadLength(sizeof(payload));
 	  xbee.send(zbTx);
 #endif
   }
@@ -566,6 +570,7 @@ void loop(void) {
       switch(xbee.getResponse().getApiId()) {
       case ZB_RX_RESPONSE:
 	xbee.getResponse().getZBRxResponse(rx);
+	dataPtr = rx.getData();
 	      debug.print("ZB RZ [");
 	      for(int i = 0; i < rx.getDataLength(); i++) {
 		      if(i > 0)
@@ -577,6 +582,32 @@ void loop(void) {
 		debug.print(" (ACK)");
 	}
 	debug.println("");
+	if(rx.getDataLength() < 1)
+		break;
+	switch(dataPtr[0]) {
+	case 1: /* Query time */
+		zbTx.setPayload((uint8_t *)&clock);
+		zbTx.setPayloadLength(sizeof(clock));
+		xbee.send(zbTx);
+		break;
+
+	case 2: /* Set time */
+		if(rx.getDataLength() < 5)
+			break;
+		clock = *(uint32_t *)&dataPtr[1];
+		break;
+
+	case 3: /* Query sensor */
+		sensorPayload[6] = dataPtr[1] + '0';
+		zbTx.setPayload(sensorPayload);
+		zbTx.setPayloadLength(sizeof(sensorPayload));
+		xbee.send(zbTx);
+		break;
+
+	default:
+		debug.println("Unknown Data packet.");
+		break;
+	}
 	break;
 
       case ZB_TX_STATUS_RESPONSE:
