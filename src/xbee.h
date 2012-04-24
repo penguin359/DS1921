@@ -51,6 +51,20 @@ typedef struct {
 
 typedef uint16_t macAddr16_t;
 
+typedef enum {
+	UNUSED_NODE_STATUS,
+	SENSOR_NODE_STATUS,
+} nodeStatus_t;
+
+#define MAX_IDENTIFIER_LEN	20
+
+typedef struct {
+	nodeStatus_t	status;
+	macAddr64_t	addr64;
+	macAddr16_t	addr16;
+	char		identifier[MAX_IDENTIFIER_LEN];
+} node_t;
+
 typedef struct {
 	int fd;
 	int frameId;
@@ -73,6 +87,9 @@ extern const macAddr64_t broadcastAddr;
 extern const macAddr64_t coordinatorAddr;
 
 void initNodes(void);
+
+void startNodeSearch(void);
+node_t *findNextNode(void);
 
 int sendApi(xbee_t *xbee, char *data, int len);
 int sendAt(xbee_t *xbee, char *cmd, bool queue);

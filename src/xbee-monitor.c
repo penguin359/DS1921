@@ -13,6 +13,16 @@
 #include "sensor.h"
 
 
+xbee_t xbeeDevice;
+xbee_t *xbee = &xbeeDevice;
+
+
+int addNewNodeCallback(nodeIdentification_t *node)
+{
+	sendTime(xbee, &node->addr64);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	char *file;
@@ -21,9 +31,8 @@ int main(int argc, char **argv)
 	char buf[128];
 	char line[128];
 	int linePos = 0;
-
-	xbee_t xbeeDevice;
-	xbee_t *xbee = &xbeeDevice;
+	struct timeval timeout;
+	node_t *node;
 
 	if(argc < 2) {
 		fprintf(stderr, "Usage: %s tty\n", argv[0]);
@@ -49,6 +58,9 @@ int main(int argc, char **argv)
 	while(1) {
 		time(&currentTime);
 		if(currentTime >= lastTime + 60) {
+			startNodeSearch();
+			while((node = findNextNode()) != NULL)
+				sendTime(xbee, &node->addr64);
 			if(sendAt(xbee, FREE_CHILD_NODES_AT_CMD, 0) < 0) {
 				perror("sendAt()");
 				close(fd);
@@ -59,6 +71,7 @@ int main(int argc, char **argv)
 				close(fd);
 				exit(1);
 			}
+#if 0
 			if(write(fd, "D\n", 2) < 2) {
 				perror("write()");
 				//if(tcsetattr(fd, TCSANOW, &savedTermios) < 0) {
@@ -69,13 +82,16 @@ int main(int argc, char **argv)
 				close(fd);
 				exit(1);
 			}
+#endif
 			lastTime = currentTime;
 		}
 		fd_set rfds, wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
 		FD_SET(fd, &rfds);
-		if((count = select(fd+1, &rfds, NULL, NULL, NULL)) < 0) {
+		timeout.tv_sec = 10;
+		timeout.tv_usec = 0;
+		if((count = select(fd+1, &rfds, &wfds, NULL, &timeout)) < 0) {
 			perror("select()");
 			close(fd);
 			exit(1);

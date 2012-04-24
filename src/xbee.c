@@ -11,21 +11,25 @@
 
 
 #define MAX_NODES		10
-#define MAX_IDENTIFIER_LEN	20
-
-typedef enum {
-	UNUSED_NODE_STATUS,
-	SENSOR_NODE_STATUS,
-} nodeStatus_t;
-
-typedef struct {
-	nodeStatus_t	status;
-	macAddr64_t	addr64;
-	macAddr16_t	addr16;
-	char		identifier[MAX_IDENTIFIER_LEN];
-} node_t;
-
 node_t nodes[MAX_NODES];
+
+int nodeSearchIdx = 0;
+
+void startNodeSearch(void)
+{
+	nodeSearchIdx = 0;
+}
+
+node_t *findNextNode(void)
+{
+	while(nodeSearchIdx < MAX_NODES) {
+		if(nodes[nodeSearchIdx].status != UNUSED_NODE_STATUS)
+			return &nodes[nodeSearchIdx++];
+		nodeSearchIdx++;
+	}
+
+	return NULL;
+}
 
 int addNewNode(nodeIdentification_t *node)
 {
@@ -128,6 +132,7 @@ int sendApi(xbee_t *xbee, char *data, int len)
 
 int sendApiCmd(xbee_t *xbee, int type, bool ack)
 {
+	xbee->bufLen = 0;
 	if(xbee->bufMaxLen - xbee->bufLen < 2)
 		return -1;
 
@@ -163,22 +168,33 @@ int sendApiAddr(xbee_t *xbee, macAddr64_t *addr64)
 	return 0;
 }
 
+int sendApiBuf(xbee_t *xbee, char *buf, int len)
+{
+	if(xbee->bufMaxLen - xbee->bufLen < len)
+		return -1;
+
+	memcpy(&xbee->buf[xbee->bufLen], buf, len);
+	xbee->bufLen += len;
+
+	return 0;
+}
+
+int sendApiBytes(xbee_t *xbee, int bytesAvail)
+{
+	if(xbee->bufMaxLen - xbee->bufLen < bytesAvail)
+		return -1;
+
+	return 0;
+}
+
 int sendAt(xbee_t *xbee, char *cmd, bool queue)
 {
-	char buf[128], *bufPtr = buf;
-	int bufLen = 0;
+	sendApiCmd(xbee, queue ? AT_QUEUE_API_CMD : AT_API_CMD, TRUE);
+	sendApiBytes(xbee, 2);
+	xbee->buf[xbee->bufLen++] = cmd[0];
+	xbee->buf[xbee->bufLen++] = cmd[1];
 
-	*bufPtr++ = AT_API_CMD; bufLen++;
-	*bufPtr++ = xbee->frameId; bufLen++;
-	*bufPtr++ = cmd[0]; bufLen++;
-	*bufPtr++ = cmd[1]; bufLen++;
-	if(queue)
-		buf[0] = AT_QUEUE_API_CMD;
-	xbee->frameId++;
-	if(xbee->frameId <= 0 || xbee->frameId > 255)
-		xbee->frameId = 1;
-
-	return sendApi(xbee, buf, bufLen);
+	return sendApi(xbee, xbee->buf, xbee->bufLen);
 }
 
 int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue)
@@ -189,6 +205,7 @@ int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue)
 		options = 0x02;
 	sendApiCmd(xbee, REMOTE_AT_API_CMD, TRUE);
 	sendApiAddr(xbee, addr64);
+	sendApiBytes(xbee, 3);
 	xbee->buf[xbee->bufLen++] = options;
 	xbee->buf[xbee->bufLen++] = cmd[0];
 	xbee->buf[xbee->bufLen++] = cmd[1];
@@ -198,27 +215,14 @@ int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue)
 
 int sendTx(xbee_t *xbee, macAddr64_t *addr64, void *data, int len)
 {
-	char buf[128], *bufPtr = buf;
-	int bufLen = 0;
+	sendApiCmd(xbee, ZB_TX_API_CMD, TRUE);
+	sendApiAddr(xbee, addr64);
+	sendApiBytes(xbee, 2 + len);
+	xbee->buf[xbee->bufLen++] = 0x00; /* broadcast radius */
+	xbee->buf[xbee->bufLen++] = 0x00; /* options */
+	sendApiBuf(xbee, data, len);
 
-	*bufPtr++ = ZB_TX_API_CMD; bufLen++;
-	*bufPtr++ = xbee->frameId; bufLen++;
-	xbee->frameId++;
-	if(xbee->frameId <= 0 || xbee->frameId > 255)
-		xbee->frameId = 1;
-	memcpy(bufPtr, addr64, sizeof(addr64));
-	bufPtr += sizeof(addr64); bufLen += sizeof(addr64);
-	*bufPtr++ = 0xff; bufLen++; /* 16-bit destination address */
-	*bufPtr++ = 0xfe; bufLen++;
-	*bufPtr++ = 0x00; bufLen++; /* broadcast radius */
-	*bufPtr++ = 0x00; bufLen++; /* options */
-	if(len > sizeof(buf)-bufLen)
-		return -1;
-	memcpy(&buf[14], data, sizeof(buf)-14);
-	memcpy(bufPtr, data, len);
-	bufPtr += len; bufLen += len;
-
-	return sendApi(xbee, buf, bufLen);
+	return sendApi(xbee, xbee->buf, xbee->bufLen);
 }
 
 int sendTxExplicit(xbee_t *xbee, macAddr64_t *addr64, void *data, int len, int srcEndpoint, int dstEndpoint, int clusterId, int profileId)
@@ -270,6 +274,8 @@ unsigned int bytesLeft = 0;
 unsigned char cksum = 0;
 bool escapeNextByte = FALSE;
 
+int addNewNodeCallback(nodeIdentification_t *node);
+
 int processApi(unsigned char *buf, int len)
 {
 	int i;
@@ -300,6 +306,7 @@ int processApi(unsigned char *buf, int len)
 		node = (nodeIdentification_t *)buf;
 		//printf("I spy a node identification -> %s\n", node->identifier); //(char *)&buf[22]);
 		addNewNode(node);
+		addNewNodeCallback(node);
 		return 0;
 		break;
 

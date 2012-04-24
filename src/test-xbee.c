@@ -10,6 +10,11 @@
 #include "sensor.h"
 
 
+int addNewNodeCallback(nodeIdentification_t *node)
+{
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	xbee_t xbeeDevice;
