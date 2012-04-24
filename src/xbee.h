@@ -75,6 +75,17 @@ typedef struct {
 
 typedef struct {
 	uint8_t		type;
+	uint8_t		frameId;
+	macAddr16_t	addr16;
+	uint8_t		retries;
+	uint8_t		deliveryStatus;
+	uint8_t		discoveryStatus;
+} __attribute((packed)) zbTxStatusResponse_t;
+
+#define ZB_DELIVERY_STATUS_SUCCESS	0x00
+
+typedef struct {
+	uint8_t		type;
 	macAddr64_t	addr64;
 	macAddr16_t	addr16;
 	uint8_t		options;

@@ -279,6 +279,7 @@ int addNewNodeCallback(nodeIdentification_t *node);
 int processApi(unsigned char *buf, int len)
 {
 	int i;
+	zbTxStatusResponse_t *txStatus;
 	nodeIdentification_t *node;
 
 	switch(buf[0]) {
@@ -302,6 +303,16 @@ int processApi(unsigned char *buf, int len)
 		printf("I spy an AT command response -> ");
 		break;
 
+	case ZB_TX_STATUS_API_CMD:
+		txStatus = (zbTxStatusResponse_t *)buf;
+		printf("TX Status report: ");
+		if(txStatus->deliveryStatus != ZB_DELIVERY_STATUS_SUCCESS) {
+			printf("Failed to transmit packet: 0x%x\n", txStatus->deliveryStatus);
+		} else {
+			printf("Success with %d retries.\n", txStatus->retries);
+		}
+		break;
+
 	case NODE_IDENTIFICATION_API_CMD:
 		node = (nodeIdentification_t *)buf;
 		//printf("I spy a node identification -> %s\n", node->identifier); //(char *)&buf[22]);
@@ -312,8 +323,10 @@ int processApi(unsigned char *buf, int len)
 
 	default:
 		/* Ignore unknown commands */
+		printf("Unknown API Packet: 0x%x\n", buf[0]);
 		break;
 	}
+	buf++;
 	printf("P: '");
 	while(len-- > 0) {
 		if(isprint(*buf)) {
