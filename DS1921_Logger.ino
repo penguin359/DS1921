@@ -75,9 +75,7 @@
 #define ledOff()			digitalWrite(LED_PIN, LOW);
 
 
-#define TEENSY
-
-#ifdef TEENSY
+#ifdef CORE_TEENSY
 #define AREF_MV				5000.
 #else
 #define AREF_MV				3300.
@@ -100,21 +98,27 @@ class Dummy {
 		int read() {return -1;}
 };
 
-//HardwareSerial Uart = HardwareSerial();
+//#define DEBUG_XBEE
+
+#ifdef DEBUG_XBEE
+HardwareSerial uart = HardwareSerial();
+#endif
 //#define debug Uart
-#ifdef TEENSY
+#ifdef CORE_TEENSY
 #define debug Serial
 #else
 Dummy Dummy;
 #define debug Dummy
 #endif
 
+#ifndef DEBUG_XBEE
 XBee xbee = XBee();
-XBeeResponse response = XBeeResponse();
+//XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
 uint8_t payload[] = { 'H', 'i' };
+#endif
 
 unsigned long clock = 0;
 //elapsedMillis clockTick;
@@ -125,8 +129,12 @@ unsigned long  clockTick;
 
 void setup(void) {
   //debug.begin(9600);
+#ifdef DEBUG_XBEE
+  uart.begin(9600);
+#else
   xbee.begin(9600);
-  delay(5000);
+#endif
+  //delay(5000);
   //debug.println("Hello, World!");
   pinMode(LED_PIN, OUTPUT);
   analogReference(DEFAULT);
@@ -534,19 +542,36 @@ void loop(void) {
 	  clock++;
 	  debug.print("UTime=");
 	  debug.println(clock, DEC);
+#ifndef DEBUG_XBEE
 	  ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
 	  xbee.send(zbTx);
+#endif
   }
 
   if(debug.available()) {
     parseSerial(debug.read());
   }
 
-  xbee.readPacket();
+#ifdef DEBUG_XBEE
+  if(uart.available()) {
+	  debug.print("XB: [");
+	  while(uart.available())
+		  debug.print(uart.read(), HEX);
+	  debug.println("]");
+  }
+#else
+  xbee.readPacket(200);
   if(xbee.getResponse().isAvailable()) {
       switch(xbee.getResponse().getApiId()) {
       case ZB_RX_RESPONSE:
-	      debug.print("ZB RZ");
+	xbee.getResponse().getZBRxResponse(rx);
+	      debug.print("ZB RZ [");
+	      for(int i = 0; i < rx.getDataLength(); i++) {
+		      if(i > 0)
+			      debug.print(" ");
+		      debug.print(rx.getData()[i], HEX);
+	      }
+	      debug.print("]");
         if (rx.getOption() == ZB_PACKET_ACKNOWLEDGED) {
 		debug.print(" (ACK)");
 	}
@@ -564,7 +589,11 @@ void loop(void) {
 	debug.println("Unknown");
 	break;
       }
+  } else if(xbee.getResponse().isError()) {
+	  debug.print("XBee Error: ");
+	  debug.println(xbee.getResponse().getErrorCode(), DEC);
   }
+#endif
 
 #if 1
   delay(2000);
