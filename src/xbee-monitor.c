@@ -33,6 +33,7 @@ int main(int argc, char **argv)
 	int linePos = 0;
 	struct timeval timeout;
 	node_t *node;
+	int type = 0;
 
 	if(argc < 2) {
 		fprintf(stderr, "Usage: %s tty\n", argv[0]);
@@ -59,8 +60,30 @@ int main(int argc, char **argv)
 		time(&currentTime);
 		if(currentTime >= lastTime + 10) {
 			startNodeSearch();
-			while((node = findNextNode()) != NULL)
-				sendTime(xbee, &node->addr64);
+			while((node = findNextNode()) != NULL) {
+				switch(type) {
+				case 0:
+					sendTime(xbee, &node->addr64);
+					break;
+
+				case 1:
+					queryTime(xbee, &node->addr64);
+					break;
+
+				case 2:
+				case 3:
+				case 4:
+				case 5:
+					querySensor(xbee, &node->addr64, type-1);
+					break;
+
+				default:
+					type = 0;
+					break;
+				}
+				
+				type = (type+1) % 6;
+			}
 			if(sendAt(xbee, FREE_CHILD_NODES_AT_CMD, 0) < 0) {
 				perror("sendAt()");
 				close(fd);

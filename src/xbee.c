@@ -288,6 +288,10 @@ int processApi(unsigned char *buf, int len)
 		break;
 
 	case ZB_RX_API_CMD:
+		if(len == 16) {
+			printf("Retrieved time: %u\n", *(unsigned int *)&buf[12]);
+			return 0;
+		}
 		printf("I spy a Zigbee packet reception -> ");
 		for(i = 12; i < len; i++)
 			fputc(buf[i], stdout);
@@ -311,6 +315,7 @@ int processApi(unsigned char *buf, int len)
 		} else {
 			printf("Success with %d retries.\n", txStatus->retries);
 		}
+		return 0;
 		break;
 
 	case NODE_IDENTIFICATION_API_CMD:
@@ -323,7 +328,7 @@ int processApi(unsigned char *buf, int len)
 
 	default:
 		/* Ignore unknown commands */
-		printf("Unknown API Packet: 0x%x\n", buf[0]);
+		printf("Unknown API Packet: 0x%x -> ", buf[0]);
 		break;
 	}
 	buf++;
