@@ -8,6 +8,7 @@
 //#include <sys/stat.h>
 
 #include "xbee.h"
+#include "sensor.h"
 
 
 #define MAX_NODES		10
@@ -288,6 +289,38 @@ int processApi(unsigned char *buf, int len)
 		break;
 
 	case ZB_RX_API_CMD:
+		if(len < 12)
+			break;
+		switch(buf[12]) {
+		case QUERY_TIME_SENSOR_CMD | 0x80:
+			printf("Retrieved time: %u\n", *(unsigned int *)&buf[13]);
+			return 0;
+			break;
+
+		case QUERY_SENSOR_SENSOR_CMD | 0x80:
+			printf("Sensor(%d) is %u @ %u\n", (int)*(uint8_t *)&buf[12+1], (unsigned int)*(uint16_t *)&buf[12+7], (unsigned int)*(uint32_t *)&buf[12+3]);
+			return 0;
+			break;
+
+		case 0x04:
+			printf("Debug: '");
+			fflush(stdout);
+			buf += 13;
+			len -= 13;
+			while(len-- > 0) {
+				if(isprint(*buf)) {
+					printf("%c", *buf++);
+				} else {
+					printf("<%02X>", (unsigned)*buf++);
+				}
+			}
+			printf("'\n");
+			return 0;
+			break;
+
+		default:
+			printf("Unknown command: 0x%x\n", buf[12]);
+		}
 		if(len == 16) {
 			printf("Retrieved time: %u\n", *(unsigned int *)&buf[12]);
 			return 0;
