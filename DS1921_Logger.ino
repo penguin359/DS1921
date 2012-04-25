@@ -118,8 +118,10 @@ ZBRxResponse rx = ZBRxResponse();
 ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
-uint8_t payload[] = { 'H', 'i' };
-uint8_t sensorPayload[] = { 'S', 'e', 'n', 's', 'o', 'r', '-' };
+uint8_t payload[] = { 0x04, 'H', 'i' };
+uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
+//uint8_t sensorPayload[] = { 'S', 'e', 'n', 's', 'o', 'r', '-' };
+uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0 };
 #endif
 
 uint32_t clock = 0;
@@ -586,8 +588,9 @@ void loop(void) {
 		break;
 	switch(dataPtr[0]) {
 	case 1: /* Query time */
-		zbTx.setPayload((uint8_t *)&clock);
-		zbTx.setPayloadLength(sizeof(clock));
+		*(uint32_t *)&timePayload[1] = clock;
+		zbTx.setPayload(timePayload);
+		zbTx.setPayloadLength(sizeof(timePayload));
 		xbee.send(zbTx);
 		break;
 
@@ -598,7 +601,11 @@ void loop(void) {
 		break;
 
 	case 3: /* Query sensor */
-		sensorPayload[6] = dataPtr[1] + '0';
+		if(rx.getDataLength() < 2)
+			break;
+		sensorPayload[1] = dataPtr[1];
+		*(uint32_t *)&sensorPayload[3] = clock;
+		*(uint16_t *)&sensorPayload[7] = 128UL;
 		zbTx.setPayload(sensorPayload);
 		zbTx.setPayloadLength(sizeof(sensorPayload));
 		xbee.send(zbTx);
