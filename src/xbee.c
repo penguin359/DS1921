@@ -298,7 +298,7 @@ int processApi(unsigned char *buf, int len)
 			break;
 
 		case QUERY_SENSOR_SENSOR_CMD | 0x80:
-			printf("Sensor(%d) is %u @ %u\n", (int)*(uint8_t *)&buf[12+1], (unsigned int)*(uint16_t *)&buf[12+7], (unsigned int)*(uint32_t *)&buf[12+3]);
+			printf("Sensor(%d) is %.2f°F @ %u\n", (int)*(uint8_t *)&buf[12+1], (float)(int)*(uint16_t *)&buf[12+7] * 0.0625f * 9.f/5.f + 32.f, (unsigned int)*(uint32_t *)&buf[12+3]);
 			return 0;
 			break;
 
