@@ -2,6 +2,8 @@
 #include <XBee.h>
 #include <Wire.h>
 
+#include "DS1921_Logger.h"
+
 /* OneWire DS18S20, DS18B20, DS1822 Temperature Example
  *
  * http://www.pjrc.com/teensy/td_libs_OneWire.html
@@ -71,7 +73,11 @@
 #define DS1921_STATUS_TAF		0x01
 
 
-#define LED_PIN				11
+//#ifdef CORE_TEENSY
+//#define LED_PIN				11
+//#else
+#define LED_PIN				LED_BUILTIN
+//#endif
 #define ledOn()				digitalWrite(LED_PIN, HIGH);
 #define ledOff()			digitalWrite(LED_PIN, LOW);
 
@@ -100,6 +106,7 @@ class Dummy {
 };
 
 //#define DEBUG_XBEE
+#define DEBUG_SENSOR
 
 #ifdef DEBUG_XBEE
 HardwareSerial uart = HardwareSerial();
@@ -132,7 +139,8 @@ unsigned long clockTick;
 #define D0 5
 #define D1 6
 
-void setup(void) {
+void setup(void)
+{
 	//debug.begin(9600);
 #ifdef DEBUG_XBEE
 	uart.begin(9600);
@@ -145,14 +153,81 @@ void setup(void) {
 	analogReference(DEFAULT);
 	pinMode(A1, INPUT);
 	digitalWrite(A1, LOW);
-	pinMode(D0, INPUT);
-	pinMode(D1, INPUT);
-	digitalWrite(D0, HIGH); /* Turn on pull-ups */
-	digitalWrite(D1, HIGH);
+//#ifdef CORE_TEENSY
+//	pinMode(D0, INPUT);
+//	pinMode(D1, INPUT);
+//	digitalWrite(D0, HIGH); /* Turn on pull-ups */
+//	digitalWrite(D1, HIGH);
+//#else
+	pinMode(SCL, INPUT);
+	pinMode(SDA, INPUT);
+	digitalWrite(SCL, HIGH); /* Turn on pull-ups */
+	digitalWrite(SDA, HIGH);
+//#endif
 	Wire.begin();
 }
 
-void writeDS18B20(byte *addr, byte high, byte low, byte config) {
+#if 0
+void debugPrint(char *str)
+{
+	ZBTxRequest zbTx = ZBTxRequest(coordinator, str, strlen(str));
+	//zbTx.setPayload(payload);
+	//zbTx.setPayloadLength(sizeof(payload));
+	xbee.send(zbTx);
+}
+#endif
+
+class SensorDebug : public Stream {
+    private:
+	uint8_t debugPayload[110];
+	int offset;
+	ZBTxRequest zbTx;
+
+    public:
+	SensorDebug() : Stream() {
+		debugPayload[0] = 0x04;
+		offset = 1;
+		zbTx = ZBTxRequest(coordinator, debugPayload, offset);
+	}
+
+	virtual int available(void) { return 0; }
+	virtual int read(void) { return 0; }
+	virtual int peek(void) { return 0; }
+	virtual void flush(void) {
+		zbTx.setPayloadLength(offset);
+		xbee.send(zbTx);
+		offset = 1;
+	}
+
+	virtual size_t write(uint8_t val) {
+		return write(&val, sizeof(val));
+	}
+
+	virtual size_t write(uint8_t *val, size_t len) {
+		int i;
+
+		for(i = 0; offset < sizeof(debugPayload) && i < len; offset++, i++) {
+			if(val[i] == '\r') {
+				offset--;
+				continue;
+			} else if(val[i] == '\n') {
+				i++;
+				flush();
+				return len - i;
+			}
+			debugPayload[offset] = val[i];
+		}
+		if(offset > 60)
+			flush();
+
+		return len - i;
+	}
+};
+
+SensorDebug testDebug = SensorDebug();
+
+void writeDS18B20(byte *addr, byte high, byte low, byte config)
+{
 	byte status;
 
 	ds.reset();
@@ -189,7 +264,8 @@ void writeDS18B20(byte *addr, byte high, byte low, byte config) {
 	/* TODO: replace delay with better solution */
 }
 
-void writeDS1921(byte *addr, int target, byte *data, int len) {
+void writeDS1921(byte *addr, int target, byte *data, int len)
+{
 	byte status;
 
 	ds.reset();
@@ -221,7 +297,8 @@ void writeDS1921(byte *addr, int target, byte *data, int len) {
 	/* TODO: replace delay with better solution */
 }
 
-void readDS1921(byte *addr, int target, byte *data, int len) {
+void readDS1921(byte *addr, int target, byte *data, int len)
+{
 	ds.reset();
 	ds.select(addr);
 	ds.write(DS1921_READ_MEMORY);
@@ -231,7 +308,8 @@ void readDS1921(byte *addr, int target, byte *data, int len) {
 		*data++ = ds.read();
 }
 
-void clearDS1921(byte *addr) {
+void clearDS1921(byte *addr)
+{
 	byte control;
 
 	debug.println("  Clearing memory...");
@@ -262,7 +340,8 @@ void clearDS1921(byte *addr) {
 		debug.println("  Failed to clear memory!");
 }
 
-void stopMission(byte *addr) {
+void stopMission(byte *addr)
+{
 	byte zero = 0;
 	writeDS1921(addr, DS1921_TEMPERATURE, &zero, sizeof(zero));
 }
@@ -281,7 +360,8 @@ byte buf[11];
 int bufCount = 0;
 long val;
 
-void parseSerial(char c) {
+void parseSerial(char c)
+{
 	static int state = HOME_STATE;
 	byte rtcBuf[7];
 
@@ -512,36 +592,100 @@ byte rtc[] = {
 
 int writeRtc = 0;
 
-void printTemp(float celsius) {
+temp_t readAnalogSensor(int sensor)
+{
+	const int sensorPin[] = {
+		A0,
+		A1,
+		A2,
+		A3,
+#ifdef CORE_TEENSY
+		A4,
+		A5,
+#else
+		A6,
+		A7,
+#endif
+	};
+
+	if(sensor < 0 || sensor >= sizeof(sensorPin)/sizeof(sensorPin[0]))
+		return ERROR_TEMP;
+
+	long val = analogRead(sensorPin[sensor]);
+	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
+#ifdef DEBUG_SENSOR
+	testDebug.print("ADC Val: ");
+	testDebug.println(val, DEC);
+#endif
+
+	return temp;
+}
+
+#define LM75_BASE_ADDR	0x48
+#define LM75_MAX_ADDR	LM75_BASE_ADDR + 8
+
+temp_t readLM75Sensor(int sensor)
+{
+	if(sensor < 0 || sensor >= LM75_MAX_ADDR)
+		return ERROR_TEMP;
+
+	Wire.beginTransmission(LM75_BASE_ADDR + sensor);
+	Wire.write((uint8_t)0U);
+	Wire.endTransmission();
+	Wire.requestFrom(LM75_BASE_ADDR + sensor, 2);
+	long val = Wire.read() << 8;
+	val |= Wire.read();
+	val >>= 4;
+	temp_t temp = (temp_t)val * 0.0625f;
+#ifdef DEBUG_SENSOR
+	testDebug.print("I2C Val: ");
+	testDebug.println(val, DEC);
+#endif
+
+	return temp;
+}
+
+temp_t readSensor(int sensor)
+{
+	if(sensor >= 0 && sensor < 16)
+		return readAnalogSensor(sensor - 0);
+	else if(sensor >= 16 && sensor < 32)
+		return readLM75Sensor(sensor - 16);
+	return ERROR_TEMP;
+}
+
+void printTemp(temp_t celsius)
+{
 	static int alarm = 0;
 	float fahrenheit;
 
 	if(celsius < 8. || celsius > 58.) {
-		debug.println("ALARM!");
+		testDebug.println("ALARM!");
 		alarm = 1;
 		ledOn();
 	} else {
 		ledOff();
 	}
 	fahrenheit = celsius * 1.8 + 32.0;
-	//debug.print("  ATemperature = ");
-	debug.print("  T=");
-	debug.print(celsius);
-	//debug.print(" Celsius, ");
-	debug.print("C, ");
-	debug.print(fahrenheit);
-	//debug.println(" Fahrenheit");
-	debug.println("F");
+	//testDebug.print("  ATemperature = ");
+	testDebug.print("  T=");
+	testDebug.print(celsius);
+	//testDebug.print(" Celsius, ");
+	testDebug.print("C, ");
+	testDebug.print(fahrenheit);
+	//testDebug.println(" Fahrenheit");
+	testDebug.println("F");
 }
 
-void loop(void) {
+void loop(void)
+{
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
 	byte i;
 	byte present = 0;
 	byte type_s, type_19;
 	byte data[12];
 	//byte addr[8];
-	float celsius;
+	temp_t celsius;
 	byte *dataPtr;
 
 	unsigned long currentMillis = millis();
@@ -551,9 +695,9 @@ void loop(void) {
 		debug.print("UTime=");
 		debug.println(clock, DEC);
 #ifndef DEBUG_XBEE
-		zbTx.setPayload(payload);
-		zbTx.setPayloadLength(sizeof(payload));
-		xbee.send(zbTx);
+		//zbTx.setPayload(payload);
+		//zbTx.setPayloadLength(sizeof(payload));
+		//xbee.send(zbTx);
 #endif
 	}
 
@@ -571,6 +715,7 @@ void loop(void) {
 #else
 	xbee.readPacket(2000);
 	if(xbee.getResponse().isAvailable()) {
+		temp_t temp;
 		switch(xbee.getResponse().getApiId()) {
 		case ZB_RX_RESPONSE:
 			xbee.getResponse().getZBRxResponse(rx);
@@ -605,9 +750,10 @@ void loop(void) {
 			case 3: /* Query sensor */
 				if(rx.getDataLength() < 2)
 					break;
+				temp = readSensor(dataPtr[1]);
 				sensorPayload[1] = dataPtr[1];
 				*(uint32_t *)&sensorPayload[3] = clock;
-				*(uint16_t *)&sensorPayload[7] = 128UL;
+				*(uint16_t *)&sensorPayload[7] = (uint16_t)(temp / 0.0625f);
 				zbTx.setPayload(sensorPayload);
 				zbTx.setPayloadLength(sizeof(sensorPayload));
 				xbee.send(zbTx);
@@ -643,6 +789,7 @@ void loop(void) {
 			debug.println("Unknown");
 			break;
 		}
+		return;
 	} else if(xbee.getResponse().isError()) {
 		debug.print("XBee Error: ");
 		debug.println(xbee.getResponse().getErrorCode(), DEC);
@@ -651,22 +798,10 @@ void loop(void) {
 
 #if 1
 	//delay(2000);
-	long val = analogRead(A1);
-	celsius = ((float)val / 1023. * AREF_MV - 500.)/10.;
-	debug.print("ADC Val: ");
-	debug.println(val, DEC);
+	celsius = readAnalogSensor(1);
 	printTemp(celsius);
 
-	Wire.beginTransmission(0x4f);
-	Wire.write((uint8_t)0U);
-	Wire.endTransmission();
-	Wire.requestFrom(0x4f, 2);
-	val = Wire.read() << 8;
-	val |= Wire.read();
-	val >>= 4;
-	celsius = (float)val * 0.0625;
-	debug.print("I2C Val: ");
-	debug.println(val, DEC);
+	celsius = readLM75Sensor(7);
 	printTemp(celsius);
 #if 0
 	if ( !ds.search(addr)) {
@@ -751,7 +886,7 @@ void loop(void) {
 		debug.print(" ");
 		debug.println(data[0], HEX);
 #endif
-		celsius = (float)data[0] / 2.0f - 40.0f;
+		celsius = (temp_t)data[0] / 2.0f - 40.0f;
 
 #if 0
 		if(!writeRtc) {
@@ -845,7 +980,7 @@ void loop(void) {
 			else if (cfg == 0x40) raw = raw << 1; // 11 bit res, 375 ms
 			// default is 12 bit resolution, 750 ms conversion time
 		}
-		celsius = (float)raw / 16.0;
+		celsius = (temp_t)raw / 16.0;
 	}
 	printTemp(celsius);
 #endif
