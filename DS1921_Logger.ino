@@ -656,7 +656,7 @@ void loop(void) {
   printTemp(celsius);
 
   Wire.beginTransmission(0x4f);
-  Wire.write(0);
+  Wire.write((uint8_t)0U);
   Wire.endTransmission();
   Wire.requestFrom(0x4f, 2);
   val = Wire.read() << 8;
