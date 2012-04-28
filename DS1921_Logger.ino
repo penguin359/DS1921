@@ -13,6 +13,12 @@
  */
 
 
+#define ARDUINO_UNO
+
+#ifdef ARDUINO_UNO
+#include <SoftwareSerial.h>
+#endif
+
 #define SELF_POWERED			1
 
 //#define ONE_WIRE_SENSORS
@@ -96,11 +102,22 @@
 #ifdef CORE_TEENSY
 #define AREF_MV				5000.
 #else
+#ifdef ARDUINO_UNO
+#define AREF_MV				5000.
+#else
 #define AREF_MV				3300.
+#endif
 #endif
 
 
-OneWire ds(21);  // on pin 10
+#ifdef ARDUINO_UNO
+#define XBEE_RX_PIN			2
+#define XBEE_TX_PIN			3
+SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
+#endif
+
+
+OneWire ds(0);
 
 class Dummy {
 	public:
@@ -117,13 +134,13 @@ class Dummy {
 };
 
 //#define DEBUG_XBEE
-#define DEBUG_SENSOR
+//#define DEBUG_SENSOR
 
 #ifdef DEBUG_XBEE
 HardwareSerial uart = HardwareSerial();
 #endif
 //#define debug Uart
-#ifdef CORE_TEENSY
+#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
 #define debug Serial
 #else
 Dummy Dummy;
@@ -153,14 +170,21 @@ unsigned long sensorTick;
 
 void setup(void)
 {
-	//debug.begin(9600);
 #ifdef DEBUG_XBEE
 	uart.begin(9600);
 #else
+#ifdef ARDUINO_UNO
+	debug.begin(9600);
+	pinMode(XBEE_RX_PIN, INPUT);
+	pinMode(XBEE_TX_PIN, OUTPUT);
+	xbeeSerial2.begin(9600);
+	xbee.setSerial(xbeeSerial2);
+#else
 	xbee.begin(9600);
 #endif
-	//delay(5000);
-	//debug.println("Hello, World!");
+#endif
+	delay(5000);
+	debug.println("Hello, World!");
 #ifdef LED_NOTIFICATION
 	pinMode(LED_PIN, OUTPUT);
 #endif
