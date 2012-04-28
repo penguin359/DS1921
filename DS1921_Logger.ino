@@ -15,6 +15,9 @@
 
 #define SELF_POWERED			1
 
+//#define LED_NOTIFICATION
+//#define PIEZO_NOTIFICATION
+
 
 #define DS18B20_CONVERT_TEMP		0x44
 #define DS18B20_COPY_SCRATCHPAD		0x48
@@ -73,13 +76,19 @@
 #define DS1921_STATUS_TAF		0x01
 
 
+#ifdef LED_NOTIFICATION
 //#ifdef CORE_TEENSY
 //#define LED_PIN				11
 //#else
 #define LED_PIN				LED_BUILTIN
 //#endif
-#define ledOn()				digitalWrite(LED_PIN, HIGH);
-#define ledOff()			digitalWrite(LED_PIN, LOW);
+#define ledOn()				digitalWrite(LED_PIN, HIGH)
+#define ledOff()			digitalWrite(LED_PIN, LOW)
+#endif
+
+#ifdef PIEZO_NOTIFICATION
+#define PIEZO_PIN			12
+#endif
 
 
 #ifdef CORE_TEENSY
@@ -136,8 +145,8 @@ uint32_t clock = 0;
 //elapsedMillis clockTick;
 unsigned long clockTick;
 
-#define D0 5
-#define D1 6
+//#define D0 5
+//#define D1 6
 
 void setup(void)
 {
@@ -149,10 +158,20 @@ void setup(void)
 #endif
 	//delay(5000);
 	//debug.println("Hello, World!");
+#ifdef LED_NOTIFICATION
 	pinMode(LED_PIN, OUTPUT);
+#endif
+#ifdef PIEZO_NOTIFICATION
+	pinMode(PIEZO_PIN, OUTPUT);
+	digitalWrite(PIEZO_PIN, LOW);
+#endif
+
+	/* Initialize Analog sensors */
 	analogReference(DEFAULT);
 	pinMode(A1, INPUT);
 	digitalWrite(A1, LOW);
+
+	/* Initialize Digital sensors */
 //#ifdef CORE_TEENSY
 //	pinMode(D0, INPUT);
 //	pinMode(D1, INPUT);
@@ -662,9 +681,11 @@ void printTemp(temp_t celsius)
 	if(celsius < 8. || celsius > 58.) {
 		testDebug.println("ALARM!");
 		alarm = 1;
+#ifdef LED_NOTIFICATION
 		ledOn();
 	} else {
 		ledOff();
+#endif
 	}
 	fahrenheit = celsius * 1.8 + 32.0;
 	//testDebug.print("  ATemperature = ");
@@ -677,6 +698,62 @@ void printTemp(temp_t celsius)
 	testDebug.println("F");
 }
 
+
+
+#ifdef LED_NOTIFICATION
+typedef enum {
+	OFF_LED_MODE,
+	HEARTBEAT_LED_MODE,
+	ALARM_LED_MODE,
+} ledMode_t;
+
+#define DEFAULT_LED_MODE	OFF_LED_MODE
+//#define DEFAULT_LED_MODE	HEARTBEAT_LED_MODE
+
+ledMode_t ledMode = DEFAULT_LED_MODE;
+
+#define HEARTBEAT_LED_PERIOD	1000UL
+#define HEARTBEAT_LED_ON_TIME	100UL
+#define ALARM_LED_PERIOD	2000UL
+#define ALARM_LED_ON_TIME	1000UL
+
+void ledHandler(void)
+{
+	switch(ledMode) {
+	case OFF_LED_MODE:
+		ledOff();
+		break;
+
+	case HEARTBEAT_LED_MODE:
+		if(millis() % HEARTBEAT_LED_PERIOD < HEARTBEAT_LED_ON_TIME)
+			ledOn();
+		else
+			ledOff();
+		break;
+
+	case ALARM_LED_MODE:
+		if(millis() % ALARM_LED_PERIOD < ALARM_LED_ON_TIME)
+			ledOn();
+		else
+			ledOff();
+		break;
+
+	default:
+		ledMode = OFF_LED_MODE;
+		ledOff();
+		break;
+	}
+}
+#endif
+
+#ifdef PIEZO_NOTIFICATION
+void piezoHandler(void)
+{
+}
+#endif
+
+
+
 void loop(void)
 {
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
@@ -687,6 +764,13 @@ void loop(void)
 	//byte addr[8];
 	temp_t celsius;
 	byte *dataPtr;
+
+#ifdef LED_NOTIFICATION
+	ledHandler();
+#endif
+#ifdef PIEZO_NOTIFICATION
+	piezoHandler();
+#endif
 
 	unsigned long currentMillis = millis();
 	if(currentMillis - clockTick >= 1000UL) {
