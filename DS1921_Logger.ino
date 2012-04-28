@@ -15,6 +15,8 @@
 
 #define SELF_POWERED			1
 
+//#define ONE_WIRE_SENSORS
+
 //#define LED_NOTIFICATION
 //#define PIEZO_NOTIFICATION
 
@@ -144,6 +146,7 @@ uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0 };
 uint32_t clock = 0;
 //elapsedMillis clockTick;
 unsigned long clockTick;
+unsigned long sensorTick;
 
 //#define D0 5
 //#define D1 6
@@ -611,6 +614,31 @@ byte rtc[] = {
 
 int writeRtc = 0;
 
+void printTemp(temp_t celsius)
+{
+	static int alarm = 0;
+	float fahrenheit;
+
+	if(celsius < 8. || celsius > 58.) {
+		testDebug.println("ALARM!");
+		alarm = 1;
+#ifdef LED_NOTIFICATION
+		ledOn();
+	} else {
+		ledOff();
+#endif
+	}
+	fahrenheit = celsius * 1.8 + 32.0;
+	//testDebug.print("  ATemperature = ");
+	testDebug.print("  T=");
+	testDebug.print(celsius);
+	//testDebug.print(" Celsius, ");
+	testDebug.print("C, ");
+	testDebug.print(fahrenheit);
+	//testDebug.println(" Fahrenheit");
+	testDebug.println("F");
+}
+
 temp_t readAnalogSensor(int sensor)
 {
 	const int sensorPin[] = {
@@ -673,228 +701,23 @@ temp_t readSensor(int sensor)
 	return ERROR_TEMP;
 }
 
-void printTemp(temp_t celsius)
+#ifdef ONE_WIRE_SENSORS
+temp_t readOneWireSensor(void)
 {
-	static int alarm = 0;
-	float fahrenheit;
-
-	if(celsius < 8. || celsius > 58.) {
-		testDebug.println("ALARM!");
-		alarm = 1;
-#ifdef LED_NOTIFICATION
-		ledOn();
-	} else {
-		ledOff();
-#endif
-	}
-	fahrenheit = celsius * 1.8 + 32.0;
-	//testDebug.print("  ATemperature = ");
-	testDebug.print("  T=");
-	testDebug.print(celsius);
-	//testDebug.print(" Celsius, ");
-	testDebug.print("C, ");
-	testDebug.print(fahrenheit);
-	//testDebug.println(" Fahrenheit");
-	testDebug.println("F");
-}
-
-
-
-#ifdef LED_NOTIFICATION
-typedef enum {
-	OFF_LED_MODE,
-	HEARTBEAT_LED_MODE,
-	ALARM_LED_MODE,
-} ledMode_t;
-
-#define DEFAULT_LED_MODE	OFF_LED_MODE
-//#define DEFAULT_LED_MODE	HEARTBEAT_LED_MODE
-
-ledMode_t ledMode = DEFAULT_LED_MODE;
-
-#define HEARTBEAT_LED_PERIOD	1000UL
-#define HEARTBEAT_LED_ON_TIME	100UL
-#define ALARM_LED_PERIOD	2000UL
-#define ALARM_LED_ON_TIME	1000UL
-
-void ledHandler(void)
-{
-	switch(ledMode) {
-	case OFF_LED_MODE:
-		ledOff();
-		break;
-
-	case HEARTBEAT_LED_MODE:
-		if(millis() % HEARTBEAT_LED_PERIOD < HEARTBEAT_LED_ON_TIME)
-			ledOn();
-		else
-			ledOff();
-		break;
-
-	case ALARM_LED_MODE:
-		if(millis() % ALARM_LED_PERIOD < ALARM_LED_ON_TIME)
-			ledOn();
-		else
-			ledOff();
-		break;
-
-	default:
-		ledMode = OFF_LED_MODE;
-		ledOff();
-		break;
-	}
-}
-#endif
-
-#ifdef PIEZO_NOTIFICATION
-void piezoHandler(void)
-{
-}
-#endif
-
-
-
-void loop(void)
-{
-	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
-	byte i;
+	int i;
 	byte present = 0;
 	byte type_s, type_19;
 	byte data[12];
 	//byte addr[8];
 	temp_t celsius;
-	byte *dataPtr;
 
-#ifdef LED_NOTIFICATION
-	ledHandler();
-#endif
-#ifdef PIEZO_NOTIFICATION
-	piezoHandler();
-#endif
-
-	unsigned long currentMillis = millis();
-	if(currentMillis - clockTick >= 1000UL) {
-		clockTick += 1000UL;
-		clock++;
-		debug.print("UTime=");
-		debug.println(clock, DEC);
-#ifndef DEBUG_XBEE
-		//zbTx.setPayload(payload);
-		//zbTx.setPayloadLength(sizeof(payload));
-		//xbee.send(zbTx);
-#endif
-	}
-
-	if(debug.available()) {
-		parseSerial(debug.read());
-	}
-
-#ifdef DEBUG_XBEE
-	if(uart.available()) {
-		debug.print("XB: [");
-		while(uart.available())
-			debug.print(uart.read(), HEX);
-		debug.println("]");
-	}
-#else
-	xbee.readPacket(2000);
-	if(xbee.getResponse().isAvailable()) {
-		temp_t temp;
-		switch(xbee.getResponse().getApiId()) {
-		case ZB_RX_RESPONSE:
-			xbee.getResponse().getZBRxResponse(rx);
-			dataPtr = rx.getData();
-			debug.print("ZB RZ [");
-			for(int i = 0; i < rx.getDataLength(); i++) {
-				if(i > 0)
-					debug.print(" ");
-				debug.print(rx.getData()[i], HEX);
-			}
-			debug.print("]");
-			if (rx.getOption() == ZB_PACKET_ACKNOWLEDGED) {
-				debug.print(" (ACK)");
-			}
-			debug.println("");
-			if(rx.getDataLength() < 1)
-				break;
-			switch(dataPtr[0]) {
-			case 1: /* Query time */
-				*(uint32_t *)&timePayload[1] = clock;
-				zbTx.setPayload(timePayload);
-				zbTx.setPayloadLength(sizeof(timePayload));
-				xbee.send(zbTx);
-				break;
-
-			case 2: /* Set time */
-				if(rx.getDataLength() < 5)
-					break;
-				clock = *(uint32_t *)&dataPtr[1];
-				break;
-
-			case 3: /* Query sensor */
-				if(rx.getDataLength() < 2)
-					break;
-				temp = readSensor(dataPtr[1]);
-				sensorPayload[1] = dataPtr[1];
-				*(uint32_t *)&sensorPayload[3] = clock;
-				*(uint16_t *)&sensorPayload[7] = (uint16_t)(temp / 0.0625f);
-				zbTx.setPayload(sensorPayload);
-				zbTx.setPayloadLength(sizeof(sensorPayload));
-				xbee.send(zbTx);
-				break;
-
-			default:
-				debug.println("Unknown Data packet.");
-				break;
-			}
-			break;
-
-		case ZB_TX_STATUS_RESPONSE:
-			debug.print("ZB TX Status: ");
-			xbee.getResponse().getZBTxStatusResponse(txStatus);
-			if(txStatus.getDeliveryStatus() == 0) {
-				debug.print("Success with ");
-				debug.print(txStatus.getTxRetryCount());
-				debug.println(" retries");
-			} else {
-				debug.print("Failed with status ");
-				debug.println(txStatus.getDeliveryStatus(), HEX);
-			}
-			break;
-
-		case MODEM_STATUS_RESPONSE:
-			debug.println("MODEM");
-			xbee.getResponse().getModemStatusResponse(msr);
-			if(msr.getStatus() == ASSOCIATED)
-				debug.println("ASSOCIATED");
-			break;
-
-		default:
-			debug.println("Unknown");
-			break;
-		}
-		return;
-	} else if(xbee.getResponse().isError()) {
-		debug.print("XBee Error: ");
-		debug.println(xbee.getResponse().getErrorCode(), DEC);
-	}
-#endif
-
-#if 1
-	//delay(2000);
-	celsius = readAnalogSensor(1);
-	printTemp(celsius);
-
-	celsius = readLM75Sensor(7);
-	printTemp(celsius);
-#if 0
-	if ( !ds.search(addr)) {
+	if(!ds.search(addr)) {
 		//debug.println("No more addresses.");
 		debug.println();
 		ds.reset_search();
 		delay(250);
 		delay(1250);
-		return;
+		return ERROR_TEMP;
 	}
 
 #if 0
@@ -907,7 +730,7 @@ void loop(void)
 
 	if (OneWire::crc8(addr, 7) != addr[7]) {
 		debug.println("CRC is not valid!");
-		return;
+		return ERROR_TEMP;
 	}
 	debug.println();
 
@@ -934,7 +757,7 @@ void loop(void)
 #if 0
 		debug.println("Device is not a DS18x20 family device.");
 #endif
-		return;
+		return ERROR_TEMP;
 	}
 
 	ds.reset();
@@ -1066,7 +889,200 @@ void loop(void)
 		}
 		celsius = (temp_t)raw / 16.0;
 	}
-	printTemp(celsius);
+	return celsius;
+}
 #endif
+
+
+
+#ifdef LED_NOTIFICATION
+typedef enum {
+	OFF_LED_MODE,
+	HEARTBEAT_LED_MODE,
+	ALARM_LED_MODE,
+} ledMode_t;
+
+#define DEFAULT_LED_MODE	OFF_LED_MODE
+//#define DEFAULT_LED_MODE	HEARTBEAT_LED_MODE
+
+ledMode_t ledMode = DEFAULT_LED_MODE;
+
+#define HEARTBEAT_LED_PERIOD	1000UL
+#define HEARTBEAT_LED_ON_TIME	100UL
+#define ALARM_LED_PERIOD	2000UL
+#define ALARM_LED_ON_TIME	1000UL
+
+void ledHandler(void)
+{
+	switch(ledMode) {
+	case OFF_LED_MODE:
+		ledOff();
+		break;
+
+	case HEARTBEAT_LED_MODE:
+		if(millis() % HEARTBEAT_LED_PERIOD < HEARTBEAT_LED_ON_TIME)
+			ledOn();
+		else
+			ledOff();
+		break;
+
+	case ALARM_LED_MODE:
+		if(millis() % ALARM_LED_PERIOD < ALARM_LED_ON_TIME)
+			ledOn();
+		else
+			ledOff();
+		break;
+
+	default:
+		ledMode = OFF_LED_MODE;
+		ledOff();
+		break;
+	}
+}
 #endif
+
+#ifdef PIEZO_NOTIFICATION
+void piezoHandler(void)
+{
+}
+#endif
+
+
+
+void loop(void)
+{
+	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
+	byte i;
+	temp_t celsius;
+	byte *dataPtr;
+
+#ifdef LED_NOTIFICATION
+	ledHandler();
+#endif
+#ifdef PIEZO_NOTIFICATION
+	piezoHandler();
+#endif
+
+	unsigned long currentMillis = millis();
+	if(currentMillis - clockTick >= 1000UL) {
+		clockTick += 1000UL;
+		clock++;
+		debug.print("UTime=");
+		debug.println(clock, DEC);
+#ifndef DEBUG_XBEE
+		//zbTx.setPayload(payload);
+		//zbTx.setPayloadLength(sizeof(payload));
+		//xbee.send(zbTx);
+#endif
+	}
+
+	if(debug.available()) {
+		parseSerial(debug.read());
+	}
+
+#ifdef DEBUG_XBEE
+	if(uart.available()) {
+		debug.print("XB: [");
+		while(uart.available())
+			debug.print(uart.read(), HEX);
+		debug.println("]");
+	}
+#else
+	xbee.readPacket(2000);
+	if(xbee.getResponse().isAvailable()) {
+		temp_t temp;
+		switch(xbee.getResponse().getApiId()) {
+		case ZB_RX_RESPONSE:
+			xbee.getResponse().getZBRxResponse(rx);
+			dataPtr = rx.getData();
+			debug.print("ZB RZ [");
+			for(int i = 0; i < rx.getDataLength(); i++) {
+				if(i > 0)
+					debug.print(" ");
+				debug.print(rx.getData()[i], HEX);
+			}
+			debug.print("]");
+			if (rx.getOption() == ZB_PACKET_ACKNOWLEDGED) {
+				debug.print(" (ACK)");
+			}
+			debug.println("");
+			if(rx.getDataLength() < 1)
+				break;
+			switch(dataPtr[0]) {
+			case 1: /* Query time */
+				*(uint32_t *)&timePayload[1] = clock;
+				zbTx.setPayload(timePayload);
+				zbTx.setPayloadLength(sizeof(timePayload));
+				xbee.send(zbTx);
+				break;
+
+			case 2: /* Set time */
+				if(rx.getDataLength() < 5)
+					break;
+				clock = *(uint32_t *)&dataPtr[1];
+				break;
+
+			case 3: /* Query sensor */
+				if(rx.getDataLength() < 2)
+					break;
+				temp = readSensor(dataPtr[1]);
+				sensorPayload[1] = dataPtr[1];
+				*(uint32_t *)&sensorPayload[3] = clock;
+				*(uint16_t *)&sensorPayload[7] = (uint16_t)(temp / 0.0625f);
+				zbTx.setPayload(sensorPayload);
+				zbTx.setPayloadLength(sizeof(sensorPayload));
+				xbee.send(zbTx);
+				break;
+
+			default:
+				debug.println("Unknown Data packet.");
+				break;
+			}
+			break;
+
+		case ZB_TX_STATUS_RESPONSE:
+			debug.print("ZB TX Status: ");
+			xbee.getResponse().getZBTxStatusResponse(txStatus);
+			if(txStatus.getDeliveryStatus() == 0) {
+				debug.print("Success with ");
+				debug.print(txStatus.getTxRetryCount());
+				debug.println(" retries");
+			} else {
+				debug.print("Failed with status ");
+				debug.println(txStatus.getDeliveryStatus(), HEX);
+			}
+			break;
+
+		case MODEM_STATUS_RESPONSE:
+			debug.println("MODEM");
+			xbee.getResponse().getModemStatusResponse(msr);
+			if(msr.getStatus() == ASSOCIATED)
+				debug.println("ASSOCIATED");
+			break;
+
+		default:
+			debug.println("Unknown");
+			break;
+		}
+		return;
+	} else if(xbee.getResponse().isError()) {
+		debug.print("XBee Error: ");
+		debug.println(xbee.getResponse().getErrorCode(), DEC);
+	}
+#endif
+
+	if(currentMillis - sensorTick >= 5000UL) {
+		sensorTick += 5000UL;
+
+		celsius = readAnalogSensor(1);
+		printTemp(celsius);
+
+		celsius = readLM75Sensor(7);
+		printTemp(celsius);
+
+#ifdef ONE_WIRE_SENSORS
+		celsius = readOneWireSensor();
+		printTemp(celsius);
+#endif
+	}
 }
