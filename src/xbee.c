@@ -281,7 +281,8 @@ int processApi(unsigned char *buf, int len)
 {
 	int i;
 	zbTxStatusResponse_t *txStatus;
-	nodeIdentification_t *node;
+	node_t		     *node;
+	nodeIdentification_t *nodeId;
 
 	switch(buf[0]) {
 	case ZB_TX_API_CMD:
@@ -298,7 +299,9 @@ int processApi(unsigned char *buf, int len)
 			break;
 
 		case QUERY_SENSOR_SENSOR_CMD | 0x80:
-			printf("Sensor(%d) is %.2f°F @ %u\n", (int)*(uint8_t *)&buf[12+1], (float)(int)*(uint16_t *)&buf[12+7] * 0.0625f * 9.f/5.f + 32.f, (unsigned int)*(uint32_t *)&buf[12+3]);
+			node = findNodeByAddr64((macAddr64_t *)&buf[1]);
+			if(node != NULL)
+				printf("Sensor(%d) on %s is %.2f°F @ %u\n", (int)*(uint8_t *)&buf[12+1], node->identifier, (float)(int)*(uint16_t *)&buf[12+7] * 0.0625f * 9.f/5.f + 32.f, (unsigned int)*(uint32_t *)&buf[12+3]);
 			return 0;
 			break;
 
@@ -352,10 +355,10 @@ int processApi(unsigned char *buf, int len)
 		break;
 
 	case NODE_IDENTIFICATION_API_CMD:
-		node = (nodeIdentification_t *)buf;
-		//printf("I spy a node identification -> %s\n", node->identifier); //(char *)&buf[22]);
-		addNewNode(node);
-		addNewNodeCallback(node);
+		nodeId = (nodeIdentification_t *)buf;
+		//printf("I spy a node identification -> %s\n", nodeId->identifier); //(char *)&buf[22]);
+		addNewNode(nodeId);
+		addNewNodeCallback(nodeId);
 		return 0;
 		break;
 

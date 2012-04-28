@@ -86,10 +86,12 @@ int main(int argc, char **argv)
 				}
 
 				//type = (type+1) % 6;
-				if(type == 1+2)
+				if(type == 0+2)
+					type = 1+2;
+				else if(type == 1+2)
 					type = 23+2;
 				else
-					type = 1+2;
+					type = 0+2;
 			}
 			if(sendAt(xbee, FREE_CHILD_NODES_AT_CMD, 0) < 0) {
 				perror("sendAt()");
