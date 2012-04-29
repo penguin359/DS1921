@@ -86,6 +86,19 @@ void initNodes(void)
 		nodes[i].status = UNUSED_NODE_STATUS;
 }
 
+char *strMacAddr64(macAddr64_t *addr64)
+{
+	static char str[24];
+	unsigned char *bytes = (unsigned char *)addr64;
+	int i;
+
+	for(i = 0; i < sizeof(addr64); i++)
+		snprintf(str + i*3, sizeof(str) - i*3, "%02X:", bytes[i]);
+	str[sizeof(str)-1] = '\0';
+
+	return str;
+}
+
 int writeChar(xbee_t *xbee, unsigned char c, int len)
 {
 	return write(xbee->fd, &c, sizeof(c));
@@ -153,13 +166,15 @@ int sendApiCmd(xbee_t *xbee, int type, bool ack)
 int sendApiAddr(xbee_t *xbee, macAddr64_t *addr64)
 {
 	macAddr16_t addr16 = UNKNOWN_ADDR16;
-	node_t *node;
+	//node_t *node;
 
 	if(xbee->bufMaxLen - xbee->bufLen < sizeof(macAddr64_t)+2)
 		return -1;
 
+#if 0
 	if((node = findNodeByAddr64(addr64)) != NULL)
 		addr16 = node->addr16;
+#endif
 
 	memcpy(&xbee->buf[xbee->bufLen], addr64, sizeof(macAddr64_t));
 	xbee->bufLen += sizeof(macAddr64_t);

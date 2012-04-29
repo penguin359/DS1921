@@ -102,6 +102,8 @@ void initNodes(void);
 void startNodeSearch(void);
 node_t *findNextNode(void);
 
+char *strMacAddr64(macAddr64_t *addr64);
+
 int sendApi(xbee_t *xbee, char *data, int len);
 int sendAt(xbee_t *xbee, char *cmd, bool queue);
 int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue);

@@ -77,6 +77,7 @@ int main(int argc, char **argv)
 				case 6:
 				case 18:
 				case 25:
+				case 26:
 					querySensor(xbee, &node->addr64, type-2);
 					break;
 
@@ -90,9 +91,12 @@ int main(int argc, char **argv)
 					type = 1+2;
 				else if(type == 1+2)
 					type = 23+2;
+				else if(type == 23+2)
+					type = 24+2;
 				else
 					type = 0+2;
 			}
+#if 0
 			if(sendAt(xbee, FREE_CHILD_NODES_AT_CMD, 0) < 0) {
 				perror("sendAt()");
 				close(fd);
@@ -103,6 +107,7 @@ int main(int argc, char **argv)
 				close(fd);
 				exit(1);
 			}
+#endif
 #if 0
 			if(write(fd, "D\n", 2) < 2) {
 				perror("write()");
@@ -131,7 +136,7 @@ int main(int argc, char **argv)
 		//	printf("Nothing.\n");
 		}
 		if(!FD_ISSET(fd, &rfds)) {
-			fprintf(stderr, "Odd, fd not set.\n");
+			//fprintf(stderr, "Odd, fd not set.\n");
 			continue;
 		}
 		//printf("I see data!\n");
