@@ -1,4 +1,3 @@
-#include <XBee.h>
 #include <Wire.h>
 
 #include "DS1921_Logger.h"
@@ -19,6 +18,10 @@
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
+#endif
+
+#ifndef DEBUG_XBEE
+#include <XBee.h>
 #endif
 
 #define SELF_POWERED			1
@@ -239,21 +242,27 @@ class SensorDebug : public Stream {
     private:
 	uint8_t debugPayload[110];
 	int offset;
+#ifndef DEBUG_XBEE
 	ZBTxRequest zbTx;
+#endif
 
     public:
 	SensorDebug() : Stream() {
 		debugPayload[0] = 0x04;
 		offset = 1;
+#ifndef DEBUG_XBEE
 		zbTx = ZBTxRequest(coordinator, debugPayload, offset);
+#endif
 	}
 
 	virtual int available(void) { return 0; }
 	virtual int read(void) { return 0; }
 	virtual int peek(void) { return 0; }
 	virtual void flush(void) {
+#ifndef DEBUG_XBEE
 		zbTx.setPayloadLength(offset);
 		xbee.send(zbTx);
+#endif
 		offset = 1;
 	}
 
@@ -1140,7 +1149,9 @@ void piezoHandler(void)
 
 void loop(void)
 {
+#ifndef DEBUG_XBEE
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
+#endif
 	byte i;
 	temp_t celsius;
 	byte *dataPtr;
