@@ -27,7 +27,7 @@
 //#define ONE_WIRE_SENSORS
 
 #define LED_NOTIFICATION
-//#define PIEZO_NOTIFICATION
+#define PIEZO_NOTIFICATION
 
 
 #define DS18B20_CONVERT_TEMP		0x44
@@ -99,6 +99,8 @@
 
 #ifdef PIEZO_NOTIFICATION
 #define PIEZO_PIN			12
+#define piezoOn()			digitalWrite(PIEZO_PIN, LOW)
+#define piezoOff()			digitalWrite(PIEZO_PIN, HIGH)
 #endif
 
 
@@ -1013,8 +1015,8 @@ typedef enum {
 
 ledMode_t ledMode = DEFAULT_LED_MODE;
 
-#define HEARTBEAT_LED_PERIOD	1000UL
-#define HEARTBEAT_LED_ON_TIME	100UL
+#define HEARTBEAT_LED_PERIOD	5000UL
+#define HEARTBEAT_LED_ON_TIME	500UL
 #define ALARM_LED_PERIOD	2000UL
 #define ALARM_LED_ON_TIME	1000UL
 
@@ -1048,8 +1050,49 @@ void ledHandler(void)
 #endif
 
 #ifdef PIEZO_NOTIFICATION
+typedef enum {
+	OFF_PIEZO_MODE,
+	HEARTBEAT_PIEZO_MODE,
+	ALARM_PIEZO_MODE,
+} piezoMode_t;
+
+//#define DEFAULT_PIEZO_MODE	OFF_PIEZO_MODE
+#define DEFAULT_PIEZO_MODE	HEARTBEAT_PIEZO_MODE
+//#define DEFAULT_PIEZO_MODE	ALARM_PIEZO_MODE
+
+piezoMode_t piezoMode = DEFAULT_PIEZO_MODE;
+
+#define HEARTBEAT_PIEZO_PERIOD	1000UL
+#define HEARTBEAT_PIEZO_ON_TIME	100UL
+#define ALARM_PIEZO_PERIOD	2000UL
+#define ALARM_PIEZO_ON_TIME	1000UL
+
 void piezoHandler(void)
 {
+	switch(piezoMode) {
+	case OFF_PIEZO_MODE:
+		piezoOff();
+		break;
+
+	case HEARTBEAT_PIEZO_MODE:
+		if(millis() % HEARTBEAT_PIEZO_PERIOD < HEARTBEAT_PIEZO_ON_TIME)
+			piezoOn();
+		else
+			piezoOff();
+		break;
+
+	case ALARM_PIEZO_MODE:
+		if(millis() % ALARM_PIEZO_PERIOD < ALARM_PIEZO_ON_TIME)
+			piezoOn();
+		else
+			piezoOff();
+		break;
+
+	default:
+		piezoMode = OFF_PIEZO_MODE;
+		piezoOff();
+		break;
+	}
 }
 #endif
 
