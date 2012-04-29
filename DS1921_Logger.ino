@@ -15,6 +15,7 @@
 
 //#define DEBUG_XBEE
 #define DEBUG_SENSOR
+#define TIMING_DEBUG
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
@@ -1155,6 +1156,9 @@ void loop(void)
 	byte i;
 	temp_t celsius;
 	byte *dataPtr;
+#ifdef TIMING_DEBUG
+	unsigned long mainLoopStartTime = millis();
+#endif
 
 #ifdef LED_NOTIFICATION
 	ledHandler();
@@ -1169,11 +1173,6 @@ void loop(void)
 		clock++;
 		debug.print("UTime=");
 		debug.println(clock, DEC);
-#ifndef DEBUG_XBEE
-		//zbTx.setPayload(payload);
-		//zbTx.setPayloadLength(sizeof(payload));
-		//xbee.send(zbTx);
-#endif
 	}
 
 #ifdef ONE_WIRE_SENSORS
@@ -1274,26 +1273,101 @@ void loop(void)
 #endif
 
 	if(currentMillis - sensorTick >= 5000UL) {
+#ifdef TIMING_DEBUG
+		unsigned long startTime;
+#endif
 		sensorTick += 5000UL;
 
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
+		celsius = readAnalogSensor(0);
+		testDebug.print("Analog(0): ");
+		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
+
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
 		celsius = readAnalogSensor(1);
 		testDebug.print("Analog(1): ");
 		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
 
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
 		celsius = readLM75Sensor(7);
 		testDebug.print("LM75(7): ");
 		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
+
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
+		celsius = readHIH6130Sensor(0);
+		testDebug.print("HIH6130(0): ");
+		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
 
 #ifdef ONE_WIRE_SENSORS
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
 		celsius = readOneWireSensor(0);
 		testDebug.print("1-Wire(0): ");
 		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
+
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
 		celsius = readOneWireSensor(1);
 		testDebug.print("1-Wire(1): ");
 		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
+
+#ifdef TIMING_DEBUG
+		startTime = millis();
+#endif
 		celsius = readOneWireSensor(2);
 		testDebug.print("1-Wire(2): ");
 		printTemp(celsius);
+#ifdef TIMING_DEBUG
+		testDebug.print("Took ");
+		testDebug.print(millis() - startTime, DEC);
+		testDebug.println(" ms\n");
+#endif
 #endif
 	}
+
+#ifdef TIMING_DEBUG
+	testDebug.print("Main loop took ");
+	testDebug.print(millis() - mainLoopStartTime, DEC);
+	testDebug.println(" ms\n");
+#endif
 }
