@@ -13,7 +13,10 @@
  */
 
 
-#define ARDUINO_UNO
+//#define ARDUINO_UNO
+
+//#define DEBUG_XBEE
+#define DEBUG_SENSOR
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
@@ -23,7 +26,7 @@
 
 //#define ONE_WIRE_SENSORS
 
-//#define LED_NOTIFICATION
+#define LED_NOTIFICATION
 //#define PIEZO_NOTIFICATION
 
 
@@ -132,9 +135,6 @@ class Dummy {
 	int available() {return 0;}
 	int read() {return -1;}
 };
-
-//#define DEBUG_XBEE
-//#define DEBUG_SENSOR
 
 #ifdef DEBUG_XBEE
 HardwareSerial uart = HardwareSerial();
@@ -716,12 +716,94 @@ temp_t readLM75Sensor(int sensor)
 	return temp;
 }
 
+#define HIH6130_BASE_ADDR	0x27
+#define HIH6130_MAX_ADDR	HIH6130_BASE_ADDR + 1
+
+#define	HIH6130_NORMAL_STATUS		0x0000L
+#define	HIH6130_STALE_STATUS		0x4000L
+#define	HIH6130_COMMAND_MODE_STATUS	0x8000L
+#define	HIH6130_DIAGNOSTIC_STATUS	0xc000L
+#define HIH6130_STATUS_MASK		0xc000L
+
+temp_t readHIH6130Sensor(int sensor)
+{
+	long humidityVal, tempVal;
+
+	if(sensor < 0 || sensor >= HIH6130_MAX_ADDR)
+		return ERROR_TEMP;
+
+	Wire.beginTransmission(HIH6130_BASE_ADDR + sensor);
+	Wire.endTransmission();
+	do {
+		Wire.requestFrom(HIH6130_BASE_ADDR + sensor, 4);
+		humidityVal = Wire.read() << 8;
+		humidityVal |= Wire.read();
+		tempVal = Wire.read() << 8;
+		tempVal |= Wire.read();
+		testDebug.print("H:");
+		testDebug.print(humidityVal, HEX);
+		testDebug.print(",");
+		testDebug.print(humidityVal & HIH6130_STATUS_MASK, HEX);
+		testDebug.print(",");
+		testDebug.println(HIH6130_STALE_STATUS, HEX);
+	} while((humidityVal & HIH6130_STATUS_MASK) == HIH6130_STALE_STATUS);
+
+	testDebug.print("HIH Humidity: ");
+	testDebug.print(humidityVal, DEC);
+	long status = humidityVal & HIH6130_STATUS_MASK;
+	testDebug.print(", HIH Humidity: ");
+	testDebug.print(humidityVal, DEC);
+	testDebug.print(", HIH Status: ");
+	testDebug.println(status, DEC);
+	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
+	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
+#ifdef DEBUG_SENSOR
+	testDebug.print("HIH Humidity: ");
+	testDebug.print(humidityVal, DEC);
+	testDebug.print(", Temp: ");
+	testDebug.println(tempVal, DEC);
+	testDebug.print("  Humidity: ");
+	testDebug.print(humidity);
+	testDebug.print("%, Temperature: ");
+#endif
+	tempVal >>= 2;
+	//temp_t temp = (temp_t)tempVal / (float)(2^14 - 1) * (125.f - -40.f);
+	//temp_t temp = (temp_t)(tempVal & 16383L) / 16383.f * (125.f - -40.f) + -40.f;
+	temp_t temp = (float)tempVal / 16383.f * 165.f - 40.f;
+	testDebug.print(temp * 9.f/5.f + 32.f);
+	testDebug.println("°F");
+
+	switch(status) {
+	case HIH6130_NORMAL_STATUS:
+		break;
+
+	case HIH6130_COMMAND_MODE_STATUS:
+		testDebug.println("Command Mode Error");
+		return ERROR_TEMP;
+		break;
+
+	case HIH6130_DIAGNOSTIC_STATUS:
+		testDebug.println("Diagnostic Error");
+		return ERROR_TEMP;
+		break;
+
+	default:
+		testDebug.println("Unknown Error");
+		return ERROR_TEMP;
+		break;
+	}
+
+	return temp;
+}
+
 temp_t readSensor(int sensor)
 {
 	if(sensor >= 0 && sensor < 16)
 		return readAnalogSensor(sensor - 0);
-	else if(sensor >= 16 && sensor < 32)
+	else if(sensor >= 16 && sensor < 24)
 		return readLM75Sensor(sensor - 16);
+	else if(sensor == 24)
+		readHIH6130Sensor(sensor - 24);
 	return ERROR_TEMP;
 }
 
@@ -926,8 +1008,8 @@ typedef enum {
 	ALARM_LED_MODE,
 } ledMode_t;
 
-#define DEFAULT_LED_MODE	OFF_LED_MODE
-//#define DEFAULT_LED_MODE	HEARTBEAT_LED_MODE
+//#define DEFAULT_LED_MODE	OFF_LED_MODE
+#define DEFAULT_LED_MODE	HEARTBEAT_LED_MODE
 
 ledMode_t ledMode = DEFAULT_LED_MODE;
 
