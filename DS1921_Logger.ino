@@ -1,4 +1,3 @@
-#include <OneWire.h>
 #include <XBee.h>
 #include <Wire.h>
 
@@ -24,7 +23,11 @@
 
 #define SELF_POWERED			1
 
-//#define ONE_WIRE_SENSORS
+#define ONE_WIRE_SENSORS
+
+#ifdef ONE_WIRE_SENSORS
+#include <OneWire.h>
+#endif
 
 #define LED_NOTIFICATION
 #define PIEZO_NOTIFICATION
@@ -122,7 +125,9 @@ SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
 #endif
 
 
+#ifdef ONE_WIRE_SENSORS
 OneWire ds(0);
+#endif
 
 class Dummy {
 	public:
@@ -170,6 +175,7 @@ unsigned long sensorTick;
 //#define D0 5
 //#define D1 6
 
+void scanOneWireSensors(void);
 void setup(void)
 {
 #ifdef DEBUG_XBEE
@@ -213,6 +219,10 @@ void setup(void)
 	digitalWrite(SDA, HIGH);
 //#endif
 	Wire.begin();
+
+#ifdef ONE_WIRE_SENSORS
+	scanOneWireSensors();
+#endif
 }
 
 #if 0
@@ -274,6 +284,7 @@ class SensorDebug : public Stream {
 
 SensorDebug testDebug = SensorDebug();
 
+#ifdef ONE_WIRE_SENSORS
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
 {
 	byte status;
@@ -393,6 +404,7 @@ void stopMission(byte *addr)
 	byte zero = 0;
 	writeDS1921(addr, DS1921_TEMPERATURE, &zero, sizeof(zero));
 }
+#endif
 
 enum {
 	HOME_STATE,
@@ -408,6 +420,7 @@ byte buf[11];
 int bufCount = 0;
 long val;
 
+#ifdef ONE_WIRE_SENSORS
 void parseSerial(char c)
 {
 	static int state = HOME_STATE;
@@ -639,6 +652,7 @@ byte rtc[] = {
 };
 
 int writeRtc = 0;
+#endif
 
 void printTemp(temp_t celsius)
 {
@@ -798,6 +812,7 @@ temp_t readHIH6130Sensor(int sensor)
 	return temp;
 }
 
+temp_t readOneWireSensor(int sensor);
 temp_t readSensor(int sensor)
 {
 	if(sensor >= 0 && sensor < 16)
@@ -806,29 +821,54 @@ temp_t readSensor(int sensor)
 		return readLM75Sensor(sensor - 16);
 	else if(sensor == 24)
 		readHIH6130Sensor(sensor - 24);
+#ifdef ONE_WIRE_SENSORS
+	else if(sensor < 32)
+		readOneWireSensor(sensor - 25);
+#endif
 	return ERROR_TEMP;
 }
 
 #ifdef ONE_WIRE_SENSORS
-temp_t readOneWireSensor(void)
+#define MAX_ONE_WIRE_SENSORS	5
+struct {
+	byte addr[8];
+} oneWireSensors[MAX_ONE_WIRE_SENSORS];
+
+void scanOneWireSensors(void)
+{
+	int i, j;
+
+	for(i = 0; i < MAX_ONE_WIRE_SENSORS; i++)
+		oneWireSensors[i].addr[0] = 0x00;
+
+	ds.reset_search();
+	debug.println("Scanning 1-Wire...");
+	for(i = 0; i < MAX_ONE_WIRE_SENSORS &&
+	    ds.search(oneWireSensors[i].addr); i++) {
+		debug.print("Found ROM =");
+		for(j = 0; j < 8; j++) {
+			debug.write(' ');
+			debug.print(oneWireSensors[i].addr[j], HEX);
+		}
+		debug.println("");
+	}
+}
+
+temp_t readOneWireSensor(int sensor)
 {
 	int i;
 	byte present = 0;
 	byte type_s, type_19;
 	byte data[12];
-	//byte addr[8];
+	byte *addr;
 	temp_t celsius;
 
-	if(!ds.search(addr)) {
-		//debug.println("No more addresses.");
-		debug.println();
-		ds.reset_search();
-		delay(250);
-		delay(1250);
+	if(sensor < 0 || sensor >= MAX_ONE_WIRE_SENSORS ||
+	   oneWireSensors[sensor].addr[0] == 0x0)
 		return ERROR_TEMP;
-	}
 
-#if 0
+	addr = oneWireSensors[sensor].addr;
+#if 1
 	debug.print("ROM =");
 	for( i = 0; i < 8; i++) {
 		debug.write(' ');
@@ -1125,9 +1165,11 @@ void loop(void)
 #endif
 	}
 
+#ifdef ONE_WIRE_SENSORS
 	if(debug.available()) {
 		parseSerial(debug.read());
 	}
+#endif
 
 #ifdef DEBUG_XBEE
 	if(uart.available()) {
@@ -1224,13 +1266,22 @@ void loop(void)
 		sensorTick += 5000UL;
 
 		celsius = readAnalogSensor(1);
+		testDebug.print("Analog(1): ");
 		printTemp(celsius);
 
 		celsius = readLM75Sensor(7);
+		testDebug.print("LM75(7): ");
 		printTemp(celsius);
 
 #ifdef ONE_WIRE_SENSORS
-		celsius = readOneWireSensor();
+		celsius = readOneWireSensor(0);
+		testDebug.print("1-Wire(0): ");
+		printTemp(celsius);
+		celsius = readOneWireSensor(1);
+		testDebug.print("1-Wire(1): ");
+		printTemp(celsius);
+		celsius = readOneWireSensor(2);
+		testDebug.print("1-Wire(2): ");
 		printTemp(celsius);
 #endif
 	}
