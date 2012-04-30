@@ -760,18 +760,20 @@ temp_t readHIH6130Sensor(int sensor)
 
 	Wire.beginTransmission(HIH6130_BASE_ADDR + sensor);
 	Wire.endTransmission();
+	int i = 0;
 	do {
 		Wire.requestFrom(HIH6130_BASE_ADDR + sensor, 4);
 		humidityVal = Wire.read() << 8;
 		humidityVal |= Wire.read();
 		tempVal = Wire.read() << 8;
 		tempVal |= Wire.read();
-		testDebug.print("H:");
-		testDebug.print(humidityVal, HEX);
-		testDebug.print(",");
-		testDebug.print(humidityVal & HIH6130_STATUS_MASK, HEX);
-		testDebug.print(",");
-		testDebug.println(HIH6130_STALE_STATUS, HEX);
+		//testDebug.print("H:");
+		//testDebug.print(humidityVal, HEX);
+		//testDebug.print(",");
+		//testDebug.print(humidityVal & HIH6130_STATUS_MASK, HEX);
+		//testDebug.print(",");
+		//testDebug.println(HIH6130_STALE_STATUS, HEX);
+		i++;
 	} while((humidityVal & HIH6130_STATUS_MASK) == HIH6130_STALE_STATUS);
 
 	testDebug.print("HIH Humidity: ");
@@ -779,8 +781,8 @@ temp_t readHIH6130Sensor(int sensor)
 	long status = humidityVal & HIH6130_STATUS_MASK;
 	testDebug.print(", HIH Humidity: ");
 	testDebug.print(humidityVal, DEC);
-	testDebug.print(", HIH Status: ");
-	testDebug.println(status, DEC);
+	testDebug.print(", HIH loops: ");
+	testDebug.println(i, DEC);
 	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
 	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 #ifdef DEBUG_SENSOR
