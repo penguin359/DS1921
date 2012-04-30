@@ -689,6 +689,22 @@ void printTemp(temp_t celsius)
 	testDebug.println("F");
 }
 
+typedef enum {
+	START_SENSOR_STATE,
+	WAIT_SENSOR_STATE,
+	READ_SENSOR_STATE,
+	COMPLETED_SENSOR_STATE,
+} sensorState_t;
+
+sensorState_t sensorState = START_SENSOR_STATE;
+unsigned long waitSensorTime;
+
+typedef struct {
+	byte data[4];
+} sensor_t;
+
+sensor_t sensors[32];
+
 temp_t readAnalogSensor(int sensor)
 {
 	const int sensorPin[] = {
@@ -705,6 +721,7 @@ temp_t readAnalogSensor(int sensor)
 #endif
 	};
 
+	sensorState = COMPLETED_SENSOR_STATE;
 	if(sensor < 0 || sensor >= sizeof(sensorPin)/sizeof(sensorPin[0]))
 		return ERROR_TEMP;
 
@@ -723,6 +740,7 @@ temp_t readAnalogSensor(int sensor)
 
 temp_t readLM75Sensor(int sensor)
 {
+	sensorState = COMPLETED_SENSOR_STATE;
 	if(sensor < 0 || sensor >= LM75_MAX_ADDR)
 		return ERROR_TEMP;
 
@@ -755,13 +773,20 @@ temp_t readHIH6130Sensor(int sensor)
 {
 	long humidityVal, tempVal;
 
-	if(sensor < 0 || sensor >= HIH6130_MAX_ADDR)
+	if(sensor < 0 || sensor >= HIH6130_MAX_ADDR) {
+		sensorState = COMPLETED_SENSOR_STATE;
 		return ERROR_TEMP;
+	}
 
-	Wire.beginTransmission(HIH6130_BASE_ADDR + sensor);
-	Wire.endTransmission();
-	int i = 0;
-	do {
+	switch(sensorState) {
+	case START_SENSOR_STATE:
+		Wire.beginTransmission(HIH6130_BASE_ADDR + sensor);
+		Wire.endTransmission();
+		sensorState = READ_SENSOR_STATE;
+		return 0;
+		break;
+
+	case READ_SENSOR_STATE:
 		Wire.requestFrom(HIH6130_BASE_ADDR + sensor, 4);
 		humidityVal = Wire.read() << 8;
 		humidityVal |= Wire.read();
@@ -773,16 +798,23 @@ temp_t readHIH6130Sensor(int sensor)
 		//testDebug.print(humidityVal & HIH6130_STATUS_MASK, HEX);
 		//testDebug.print(",");
 		//testDebug.println(HIH6130_STALE_STATUS, HEX);
-		i++;
-	} while((humidityVal & HIH6130_STATUS_MASK) == HIH6130_STALE_STATUS);
+		if((humidityVal & HIH6130_STATUS_MASK) == HIH6130_STALE_STATUS)
+			return 0;
+		sensorState = COMPLETED_SENSOR_STATE;
+		break;
 
-	testDebug.print("HIH Humidity: ");
-	testDebug.print(humidityVal, DEC);
+	default:
+		sensorState = COMPLETED_SENSOR_STATE;
+		return ERROR_TEMP;
+		break;
+	}
 	long status = humidityVal & HIH6130_STATUS_MASK;
-	testDebug.print(", HIH Humidity: ");
-	testDebug.print(humidityVal, DEC);
-	testDebug.print(", HIH loops: ");
-	testDebug.println(i, DEC);
+	//testDebug.print("HIH Humidity: ");
+	//testDebug.print(humidityVal, DEC);
+	//testDebug.print(", HIH Humidity: ");
+	//testDebug.print(humidityVal, DEC);
+	//testDebug.print(", HIH loops: ");
+	//testDebug.println(i, DEC);
 	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
 	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 #ifdef DEBUG_SENSOR
@@ -824,22 +856,6 @@ temp_t readHIH6130Sensor(int sensor)
 	return temp;
 }
 
-temp_t readOneWireSensor(int sensor);
-temp_t readSensor(int sensor)
-{
-	if(sensor >= 0 && sensor < 16)
-		return readAnalogSensor(sensor - 0);
-	else if(sensor >= 16 && sensor < 24)
-		return readLM75Sensor(sensor - 16);
-	else if(sensor == 24)
-		readHIH6130Sensor(sensor - 24);
-#ifdef ONE_WIRE_SENSORS
-	else if(sensor < 32)
-		readOneWireSensor(sensor - 25);
-#endif
-	return ERROR_TEMP;
-}
-
 #ifdef ONE_WIRE_SENSORS
 #define MAX_ONE_WIRE_SENSORS	5
 struct {
@@ -876,182 +892,217 @@ temp_t readOneWireSensor(int sensor)
 	temp_t celsius;
 
 	if(sensor < 0 || sensor >= MAX_ONE_WIRE_SENSORS ||
-	   oneWireSensors[sensor].addr[0] == 0x0)
+	   oneWireSensors[sensor].addr[0] == 0x0) {
+		sensorState = COMPLETED_SENSOR_STATE;
 		return ERROR_TEMP;
+	}
 
-	addr = oneWireSensors[sensor].addr;
+	switch(sensorState) {
+	case START_SENSOR_STATE:
+		addr = oneWireSensors[sensor].addr;
 #if 1
-	debug.print("ROM =");
-	for( i = 0; i < 8; i++) {
-		debug.write(' ');
-		debug.print(addr[i], HEX);
-	}
-#endif
-
-	if (OneWire::crc8(addr, 7) != addr[7]) {
-		debug.println("CRC is not valid!");
-		return ERROR_TEMP;
-	}
-	debug.println();
-
-	type_19 = 0;
-	// the first ROM byte indicates which chip
-	switch (addr[0]) {
-	case 0x10:
-		debug.println("  Chip = DS18S20");  // or old DS1820
-		type_s = 1;
-		break;
-	case 0x28:
-		debug.println("  Chip = DS18B20");
-		type_s = 0;
-		break;
-	case 0x22:
-		debug.println("  Chip = DS1822");
-		type_s = 0;
-		break;
-	case 0x21:
-		debug.println("  Chip = DS1921G");
-		type_19 = 1;
-		break;
-	default:
-#if 0
-		debug.println("Device is not a DS18x20 family device.");
-#endif
-		return ERROR_TEMP;
-	}
-
-	ds.reset();
-	ds.select(addr);
-	ds.write(DS1921_CONVERT_TEMP, 1);         // start conversion, with parasite power on at the end
-
-	delay(1000);     // maybe 750ms is enough, maybe not
-	// we might do a ds.depower() here, but the reset will take care of it.
-
-	present = ds.reset();
-	ds.select(addr);
-	if(type_19) {
-		ds.write(DS1921_READ_MEMORY);
-#if 0
-		ds.write(0x00);
-		ds.write(0x02);
-		debug.print("  Clock =");
-		for(i = 0x00; i <= 0x0A; i++) {
-			debug.print(" ");
-			debug.print(ds.read(), HEX);
+		debug.print("ROM =");
+		for( i = 0; i < 8; i++) {
+			debug.write(' ');
+			debug.print(addr[i], HEX);
 		}
-		debug.println("");
-		for( ; i < 0x11; i++)
-			ds.read();
-#else
-		ds.write(0x11);
-		ds.write(0x02);
 #endif
-		data[0] = ds.read();
-#if 0
-		debug.print("  Data = ");
-		debug.print(present,HEX);
-		debug.print(" ");
-		debug.println(data[0], HEX);
-#endif
-		celsius = (temp_t)data[0] / 2.0f - 40.0f;
 
-#if 0
-		if(!writeRtc) {
-			byte sampleRate;
-			readDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
-			debug.print("  sample rate = ");
-			debug.println(sampleRate, DEC);
-			readDS1921(addr, DS1921_STATUS_REGISTER, &sampleRate, sizeof(sampleRate));
-			if(sampleRate & DS1921_STATUS_MIP) {
-				debug.println("  Mission in progress.");
-				writeRtc = 1;
-				return;
-			}
-			clearDS1921(addr);
-			debug.println("  Starting a mission.");
-			sampleRate = 1;
-			writeDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
-			//debug.println("  Updating RTC...");
-			//writeDS1921(addr, DS1921_RTC_REGISTER, rtc, sizeof(rtc));
-			writeRtc = 1;
+		if (OneWire::crc8(addr, 7) != addr[7]) {
+			debug.println("CRC is not valid!");
+			return ERROR_TEMP;
 		}
-
-		long count = 0;
-		byte countBytes[3];
-
-		readDS1921(addr, DS1921_DEVICE_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
-		count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
-		debug.print("  Device samples = ");
-		debug.println(count, DEC);
-
-		readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
-		count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
-		debug.print("  Mission samples = ");
-		debug.println(count, DEC);
-		readDS1921(addr, DS1921_MISSION_TIMESTAMP, rtc, 5);
-		debug.print("  Mission timestamp = 20");
-		//for(i = 4; i >= 0; i--) {
-		//	debug.print(rtc[i], HEX);
-		//	debug.print(" ");
-		//}
-		for(i = 0; i < 5; i++) {
-			debug.print(rtc[4-i], HEX);
-			debug.print(" ");
-		}
-		debug.println("");
-		readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
-		debug.println("  Data log:");
-		if(count > 2048)
-			count = 2048;
-		count = 4;
-		while(count-- > 0) {
-			debug.print("    ");
-			debug.println(ds.read(), DEC);
-		}
-		debug.println("");
-#endif
-	} else {
-		ds.write(DS18B20_READ_SCRATCHPAD);
-
-#if 0
-		debug.print("  Data = ");
-		debug.print(present,HEX);
-		debug.print(" ");
-#endif
-		for ( i = 0; i < 9; i++) {           // we need 9 bytes
-			data[i] = ds.read();
-#if 0
-			debug.print(data[i], HEX);
-			debug.print(" ");
-#endif
-		}
-#if 0
-		debug.print(" CRC=");
-		debug.print(OneWire::crc8(data, 8), HEX);
 		debug.println();
+
+		type_19 = 0;
+		// the first ROM byte indicates which chip
+		switch (addr[0]) {
+		case 0x10:
+			debug.println("  Chip = DS18S20");  // or old DS1820
+			type_s = 1;
+			break;
+		case 0x28:
+			debug.println("  Chip = DS18B20");
+			type_s = 0;
+			break;
+		case 0x22:
+			debug.println("  Chip = DS1822");
+			type_s = 0;
+			break;
+		case 0x21:
+			debug.println("  Chip = DS1921G");
+			type_19 = 1;
+			break;
+		default:
+#if 0
+			debug.println("Device is not a DS18x20 family device.");
+#endif
+			return ERROR_TEMP;
+		}
+
+		ds.reset();
+		ds.select(addr);
+		ds.write(DS1921_CONVERT_TEMP, 1);         // start conversion, with parasite power on at the end
+		waitSensorTime = millis() + 1000UL;
+		sensorState = WAIT_SENSOR_STATE;
+		break;
+
+	case WAIT_SENSOR_STATE:
+
+		//delay(1000);     // maybe 750ms is enough, maybe not
+		// we might do a ds.depower() here, but the reset will take care of it.
+		if(millis() < waitSensorTime)
+			break;
+
+		sensorState = COMPLETED_SENSOR_STATE;
+		present = ds.reset();
+		ds.select(addr);
+		if(type_19) {
+			ds.write(DS1921_READ_MEMORY);
+#if 0
+			ds.write(0x00);
+			ds.write(0x02);
+			debug.print("  Clock =");
+			for(i = 0x00; i <= 0x0A; i++) {
+				debug.print(" ");
+				debug.print(ds.read(), HEX);
+			}
+			debug.println("");
+			for( ; i < 0x11; i++)
+				ds.read();
+#else
+			ds.write(0x11);
+			ds.write(0x02);
+#endif
+			data[0] = ds.read();
+#if 0
+			debug.print("  Data = ");
+			debug.print(present,HEX);
+			debug.print(" ");
+			debug.println(data[0], HEX);
+#endif
+			celsius = (temp_t)data[0] / 2.0f - 40.0f;
+
+#if 0
+			if(!writeRtc) {
+				byte sampleRate;
+				readDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
+				debug.print("  sample rate = ");
+				debug.println(sampleRate, DEC);
+				readDS1921(addr, DS1921_STATUS_REGISTER, &sampleRate, sizeof(sampleRate));
+				if(sampleRate & DS1921_STATUS_MIP) {
+					debug.println("  Mission in progress.");
+					writeRtc = 1;
+					return;
+				}
+				clearDS1921(addr);
+				debug.println("  Starting a mission.");
+				sampleRate = 1;
+				writeDS1921(addr, DS1921_SAMPLE_REGISTER, &sampleRate, sizeof(sampleRate));
+				//debug.println("  Updating RTC...");
+				//writeDS1921(addr, DS1921_RTC_REGISTER, rtc, sizeof(rtc));
+				writeRtc = 1;
+			}
+
+			long count = 0;
+			byte countBytes[3];
+
+			readDS1921(addr, DS1921_DEVICE_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
+			count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
+			debug.print("  Device samples = ");
+			debug.println(count, DEC);
+
+			readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
+			count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
+			debug.print("  Mission samples = ");
+			debug.println(count, DEC);
+			readDS1921(addr, DS1921_MISSION_TIMESTAMP, rtc, 5);
+			debug.print("  Mission timestamp = 20");
+			//for(i = 4; i >= 0; i--) {
+			//	debug.print(rtc[i], HEX);
+			//	debug.print(" ");
+			//}
+			for(i = 0; i < 5; i++) {
+				debug.print(rtc[4-i], HEX);
+				debug.print(" ");
+			}
+			debug.println("");
+			readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
+			debug.println("  Data log:");
+			if(count > 2048)
+				count = 2048;
+			count = 4;
+			while(count-- > 0) {
+				debug.print("    ");
+				debug.println(ds.read(), DEC);
+			}
+			debug.println("");
+#endif
+		} else {
+			ds.write(DS18B20_READ_SCRATCHPAD);
+
+#if 0
+			debug.print("  Data = ");
+			debug.print(present,HEX);
+			debug.print(" ");
+#endif
+			for ( i = 0; i < 9; i++) {           // we need 9 bytes
+				data[i] = ds.read();
+#if 0
+				debug.print(data[i], HEX);
+				debug.print(" ");
+#endif
+			}
+#if 0
+			debug.print(" CRC=");
+			debug.print(OneWire::crc8(data, 8), HEX);
+			debug.println();
 #endif
 
-		// convert the data to actual temperature
+			// convert the data to actual temperature
 
-		unsigned int raw = (data[1] << 8) | data[0];
-		if (type_s) {
-			raw = raw << 3; // 9 bit resolution default
-			if (data[7] == 0x10) {
-				// count remain gives full 12 bit resolution
-				raw = (raw & 0xFFF0) + 12 - data[6];
+			unsigned int raw = (data[1] << 8) | data[0];
+			if (type_s) {
+				raw = raw << 3; // 9 bit resolution default
+				if (data[7] == 0x10) {
+					// count remain gives full 12 bit resolution
+					raw = (raw & 0xFFF0) + 12 - data[6];
+				}
+			} else {
+				byte cfg = (data[4] & 0x60);
+				if (cfg == 0x00) raw = raw << 3;  // 9 bit resolution, 93.75 ms
+				else if (cfg == 0x20) raw = raw << 2; // 10 bit res, 187.5 ms
+				else if (cfg == 0x40) raw = raw << 1; // 11 bit res, 375 ms
+				// default is 12 bit resolution, 750 ms conversion time
 			}
-		} else {
-			byte cfg = (data[4] & 0x60);
-			if (cfg == 0x00) raw = raw << 3;  // 9 bit resolution, 93.75 ms
-			else if (cfg == 0x20) raw = raw << 2; // 10 bit res, 187.5 ms
-			else if (cfg == 0x40) raw = raw << 1; // 11 bit res, 375 ms
-			// default is 12 bit resolution, 750 ms conversion time
+			celsius = (temp_t)raw / 16.0;
 		}
-		celsius = (temp_t)raw / 16.0;
+		break;
+
+	default:
+		sensorState = COMPLETED_SENSOR_STATE;
+		return ERROR_TEMP;
+		break;
 	}
+
 	return celsius;
 }
 #endif
+
+temp_t readSensor(int sensor)
+{
+	if(sensor >= 0 && sensor < 16)
+		return readAnalogSensor(sensor - 0);
+	else if(sensor >= 16 && sensor < 24)
+		return readLM75Sensor(sensor - 16);
+	else if(sensor == 24)
+		readHIH6130Sensor(sensor - 24);
+#ifdef ONE_WIRE_SENSORS
+	else if(sensor < 32)
+		readOneWireSensor(sensor - 25);
+#endif
+	return ERROR_TEMP;
+}
 
 
 
@@ -1161,6 +1212,7 @@ void loop(void)
 #ifdef TIMING_DEBUG
 	unsigned long mainLoopStartTime = millis();
 #endif
+	int sensor = 0;
 
 #ifdef LED_NOTIFICATION
 	ledHandler();
@@ -1278,93 +1330,135 @@ void loop(void)
 #ifdef TIMING_DEBUG
 		unsigned long startTime;
 #endif
-		sensorTick += 5000UL;
+		//sensorTick += 5000UL;
 
+		switch(sensor) {
+		case 0:
 #ifdef TIMING_DEBUG
-		startTime = millis();
+			startTime = millis();
 #endif
-		celsius = readAnalogSensor(0);
-		testDebug.print("Analog(0): ");
-		printTemp(celsius);
+			sensorState = START_SENSOR_STATE;
+			celsius = readAnalogSensor(0);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("Analog(0): ");
+			printTemp(celsius);
 #ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
 #endif
+			break;
 
+		case 1:
 #ifdef TIMING_DEBUG
-		startTime = millis();
+			startTime = millis();
 #endif
-		celsius = readAnalogSensor(1);
-		testDebug.print("Analog(1): ");
-		printTemp(celsius);
+			sensorState = START_SENSOR_STATE;
+			celsius = readAnalogSensor(1);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("Analog(1): ");
+			printTemp(celsius);
 #ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
 #endif
+			break;
 
+		case 2:
 #ifdef TIMING_DEBUG
-		startTime = millis();
+			startTime = millis();
 #endif
-		celsius = readLM75Sensor(7);
-		testDebug.print("LM75(7): ");
-		printTemp(celsius);
+			sensorState = START_SENSOR_STATE;
+			celsius = readLM75Sensor(7);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("LM75(7): ");
+			printTemp(celsius);
 #ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
 #endif
+			break;
 
+		case 3:
 #ifdef TIMING_DEBUG
-		startTime = millis();
+			startTime = millis();
 #endif
-		celsius = readHIH6130Sensor(0);
-		testDebug.print("HIH6130(0): ");
-		printTemp(celsius);
+			sensorState = START_SENSOR_STATE;
+			celsius = readHIH6130Sensor(0);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("HIH6130(0): ");
+			printTemp(celsius);
 #ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
 #endif
+			break;
 
 #ifdef ONE_WIRE_SENSORS
+		case 4:
 #ifdef TIMING_DEBUG
-		startTime = millis();
+			startTime = millis();
 #endif
-		celsius = readOneWireSensor(0);
-		testDebug.print("1-Wire(0): ");
-		printTemp(celsius);
+			sensorState = START_SENSOR_STATE;
+			celsius = readOneWireSensor(0);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("1-Wire(0): ");
+			printTemp(celsius);
 #ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
+#endif
+			break;
+
+		case 5:
+#ifdef TIMING_DEBUG
+			startTime = millis();
+#endif
+			sensorState = START_SENSOR_STATE;
+			celsius = readOneWireSensor(1);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("1-Wire(1): ");
+			printTemp(celsius);
+#ifdef TIMING_DEBUG
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
+#endif
+			break;
+
+		case 6:
+#ifdef TIMING_DEBUG
+			startTime = millis();
+#endif
+			sensorState = START_SENSOR_STATE;
+			celsius = readOneWireSensor(2);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				sensor++;
+			testDebug.print("1-Wire(2): ");
+			printTemp(celsius);
+#ifdef TIMING_DEBUG
+			testDebug.print("Took ");
+			testDebug.print(millis() - startTime, DEC);
+			testDebug.println(" ms\n");
+#endif
+			break;
 #endif
 
-#ifdef TIMING_DEBUG
-		startTime = millis();
-#endif
-		celsius = readOneWireSensor(1);
-		testDebug.print("1-Wire(1): ");
-		printTemp(celsius);
-#ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
-#endif
-
-#ifdef TIMING_DEBUG
-		startTime = millis();
-#endif
-		celsius = readOneWireSensor(2);
-		testDebug.print("1-Wire(2): ");
-		printTemp(celsius);
-#ifdef TIMING_DEBUG
-		testDebug.print("Took ");
-		testDebug.print(millis() - startTime, DEC);
-		testDebug.println(" ms\n");
-#endif
-#endif
+		default:
+			sensorTick += 5000UL;
+			sensor = 0;
+			break;
+		}
 	}
 
 #ifdef TIMING_DEBUG
