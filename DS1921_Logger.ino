@@ -242,7 +242,7 @@ void debugPrint(char *str)
 class SensorDebug : public Stream {
     private:
 	uint8_t debugPayload[110];
-	int offset;
+	unsigned int offset;
 #ifndef DEBUG_XBEE
 	ZBTxRequest zbTx;
 #endif
@@ -250,7 +250,7 @@ class SensorDebug : public Stream {
     public:
 	SensorDebug() : Stream() {
 		debugPayload[0] = 0x04;
-		offset = 1;
+		offset = 1U;
 #ifndef DEBUG_XBEE
 		zbTx = ZBTxRequest(coordinator, debugPayload, offset);
 #endif
@@ -264,7 +264,7 @@ class SensorDebug : public Stream {
 		zbTx.setPayloadLength(offset);
 		xbee.send(zbTx);
 #endif
-		offset = 1;
+		offset = 1U;
 	}
 
 	virtual size_t write(uint8_t val) {
@@ -272,9 +272,9 @@ class SensorDebug : public Stream {
 	}
 
 	virtual size_t write(uint8_t *val, size_t len) {
-		int i;
+		unsigned int i;
 
-		for(i = 0; offset < sizeof(debugPayload) && i < len; offset++, i++) {
+		for(i = 0U; offset < sizeof(debugPayload) && i < len; offset++, i++) {
 			if(val[i] == '\r') {
 				offset--;
 				continue;
@@ -285,7 +285,7 @@ class SensorDebug : public Stream {
 			}
 			debugPayload[offset] = val[i];
 		}
-		if(offset > 60)
+		if(offset > 60U)
 			flush();
 
 		return len - i;
@@ -297,8 +297,6 @@ SensorDebug testDebug = SensorDebug();
 #ifdef ONE_WIRE_SENSORS
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
 {
-	byte status;
-
 	ds.reset();
 	ds.select(addr);
 	ds.write(DS18B20_WRITE_SCRATCHPAD);
@@ -427,7 +425,7 @@ enum {
 
 byte addr[8];
 byte buf[11];
-int bufCount = 0;
+size_t bufCount = 0U;
 long val;
 
 #ifdef ONE_WIRE_SENSORS
@@ -449,7 +447,7 @@ void parseSerial(char c)
 			break;
 		} else if(c == 'C') {
 			state = C_STATE;
-			bufCount = 0;
+			bufCount = 0U;
 			val = 0;
 			break;
 		} else if(c == 'R') {
@@ -479,7 +477,7 @@ void parseSerial(char c)
 			long count = 0;
 			byte countBytes[3];
 			readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
-			count = countBytes[0] << 0 | countBytes[1] << 8 | countBytes[2] << 16;
+			count = (long)countBytes[0] << 0 | (long)countBytes[1] << 8 | (long)countBytes[2] << 16;
 			debug.print("Count=");
 			debug.println(count, DEC);
 
@@ -722,7 +720,7 @@ temp_t readAnalogSensor(int sensor)
 	};
 
 	sensorState = COMPLETED_SENSOR_STATE;
-	if(sensor < 0 || sensor >= sizeof(sensorPin)/sizeof(sensorPin[0]))
+	if(sensor < 0 || sensor >= (int)(sizeof(sensorPin)/sizeof(sensorPin[0])))
 		return ERROR_TEMP;
 
 	long val = analogRead(sensorPin[sensor]);
