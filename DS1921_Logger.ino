@@ -910,6 +910,7 @@ temp_t readOneWireSensor(int sensor)
 
 		if (OneWire::crc8(addr, 7) != addr[7]) {
 			debug.println("CRC is not valid!");
+			sensorState = COMPLETED_SENSOR_STATE;
 			return ERROR_TEMP;
 		}
 		debug.println();
@@ -937,6 +938,7 @@ temp_t readOneWireSensor(int sensor)
 #if 0
 			debug.println("Device is not a DS18x20 family device.");
 #endif
+			sensorState = COMPLETED_SENSOR_STATE;
 			return ERROR_TEMP;
 		}
 
@@ -1077,6 +1079,7 @@ temp_t readOneWireSensor(int sensor)
 			}
 			celsius = (temp_t)raw / 16.0;
 		}
+		sensorState = COMPLETED_SENSOR_STATE;
 		break;
 
 	default:
@@ -1242,7 +1245,7 @@ void loop(void)
 		debug.println("]");
 	}
 #else
-	xbee.readPacket();
+	xbee.readPacket(100);
 	if(xbee.getResponse().isAvailable()) {
 		temp_t temp;
 		switch(xbee.getResponse().getApiId()) {
