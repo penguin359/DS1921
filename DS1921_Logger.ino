@@ -1210,7 +1210,7 @@ void loop(void)
 #ifdef TIMING_DEBUG
 	unsigned long mainLoopStartTime = millis();
 #endif
-	int sensor = 0;
+	static int sensor = 0;
 
 #ifdef LED_NOTIFICATION
 	ledHandler();
@@ -1241,7 +1241,7 @@ void loop(void)
 		debug.println("]");
 	}
 #else
-	xbee.readPacket(2000);
+	xbee.readPacket();
 	if(xbee.getResponse().isAvailable()) {
 		temp_t temp;
 		switch(xbee.getResponse().getApiId()) {
@@ -1330,17 +1330,23 @@ void loop(void)
 #endif
 		//sensorTick += 5000UL;
 
+		testDebug.print("Sensor: ");
+		testDebug.println(sensor);
 		switch(sensor) {
 		case 0:
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readAnalogSensor(0);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("Analog(0): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1352,12 +1358,16 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readAnalogSensor(1);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("Analog(1): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1369,12 +1379,16 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readLM75Sensor(7);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("LM75(7): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1386,12 +1400,16 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readHIH6130Sensor(0);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("HIH6130(0): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1404,12 +1422,16 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readOneWireSensor(0);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("1-Wire(0): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1421,12 +1443,16 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readOneWireSensor(1);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("1-Wire(1): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1438,12 +1464,16 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			sensorState = START_SENSOR_STATE;
 			celsius = readOneWireSensor(2);
-			if(sensorState == COMPLETED_SENSOR_STATE)
+			if(sensorState == COMPLETED_SENSOR_STATE) {
+				sensorState = START_SENSOR_STATE;
 				sensor++;
+			}
 			testDebug.print("1-Wire(2): ");
-			printTemp(celsius);
+			if(sensorState == COMPLETED_SENSOR_STATE)
+				printTemp(celsius);
+			else
+				testDebug.println("Waiting...");
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1454,6 +1484,7 @@ void loop(void)
 
 		default:
 			sensorTick += 5000UL;
+			sensorState = START_SENSOR_STATE;
 			sensor = 0;
 			break;
 		}
