@@ -856,9 +856,11 @@ temp_t readHIH6130Sensor(int sensor)
 
 #ifdef ONE_WIRE_SENSORS
 #define MAX_ONE_WIRE_SENSORS	5
-struct {
+typedef struct {
 	byte addr[8];
-} oneWireSensors[MAX_ONE_WIRE_SENSORS];
+} oneWireSensor_t;
+
+oneWireSensor_t oneWireSensors[MAX_ONE_WIRE_SENSORS];
 
 void scanOneWireSensors(void)
 {
@@ -884,10 +886,10 @@ temp_t readOneWireSensor(int sensor)
 {
 	int i;
 	byte present = 0;
-	byte type_s, type_19;
+	static byte type_s = 0, type_19 = 0;
 	byte data[12];
-	byte *addr;
-	temp_t celsius;
+	static byte *addr = NULL;
+	temp_t celsius = 0;
 
 	if(sensor < 0 || sensor >= MAX_ONE_WIRE_SENSORS ||
 	   oneWireSensors[sensor].addr[0] == 0x0) {
@@ -1204,7 +1206,6 @@ void loop(void)
 #ifndef DEBUG_XBEE
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
 #endif
-	byte i;
 	temp_t celsius;
 	byte *dataPtr;
 #ifdef TIMING_DEBUG
