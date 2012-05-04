@@ -1,3 +1,6 @@
+#include <avr/interrupt.h>
+#include <avr/sleep.h>
+
 #include <Wire.h>
 
 #include "DS1921_Logger.h"
@@ -133,18 +136,13 @@ SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
 OneWire ds(0);
 #endif
 
-class Dummy {
-	public:
-	void print(char *c) {}
-	void print(char *c, int i) {}
-	void print(int c) {}
-	void print(int c, int i) {}
-	void println(char *c) {}
-	void println(char *c, int i) {}
-	void println(int c) {}
-	void println(int c, int i) {}
-	int available() {return 0;}
-	int read() {return -1;}
+class Dummy : public Stream {
+    public:
+	virtual int available(void) { return 0; }
+	virtual int read(void) { return 0; }
+	virtual int peek(void) { return 0; }
+	virtual void flush(void) {}
+	virtual size_t write(uint8_t val) { return 0; }
 };
 
 #ifdef DEBUG_XBEE
@@ -698,6 +696,8 @@ sensorState_t sensorState = START_SENSOR_STATE;
 unsigned long waitSensorTime;
 
 typedef struct {
+	sensorState_t state;
+	unsigned long waitTime;
 	byte data[4];
 } sensor_t;
 
@@ -1121,7 +1121,7 @@ typedef enum {
 
 ledMode_t ledMode = DEFAULT_LED_MODE;
 
-#define HEARTBEAT_LED_PERIOD	5000UL
+#define HEARTBEAT_LED_PERIOD	4700UL
 #define HEARTBEAT_LED_ON_TIME	500UL
 #define ALARM_LED_PERIOD	2000UL
 #define ALARM_LED_ON_TIME	1000UL
@@ -1168,7 +1168,7 @@ typedef enum {
 
 piezoMode_t piezoMode = DEFAULT_PIEZO_MODE;
 
-#define HEARTBEAT_PIEZO_PERIOD	1000UL
+#define HEARTBEAT_PIEZO_PERIOD	1300UL
 #define HEARTBEAT_PIEZO_ON_TIME	100UL
 #define ALARM_PIEZO_PERIOD	2000UL
 #define ALARM_PIEZO_ON_TIME	1000UL
@@ -1216,12 +1216,20 @@ void loop(void)
 #endif
 	static int sensor = 0;
 
+#if 0
+	//set_sleep_mode(SLEEP_MODE_IDLE);
+	//set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+	cli();
+	sleep_mode();
+#endif
 #ifdef LED_NOTIFICATION
 	ledHandler();
 #endif
 #ifdef PIEZO_NOTIFICATION
 	piezoHandler();
 #endif
+	//return;
 
 	unsigned long currentMillis = millis();
 	if(currentMillis - clockTick >= 1000UL) {
