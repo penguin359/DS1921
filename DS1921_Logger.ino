@@ -639,42 +639,19 @@ void printTemp(temp_t celsius)
 	testDebug.println("F");
 }
 
-typedef enum {
-	NONE_SENSOR_TYPE,
-	ANALOG_SENSOR_TYPE,
-	LM75_SENSOR_TYPE,
-	HIH6130_SENSOR_TYPE,
-	TC_SENSOR_TYPE,
-	ONE_WIRE_SENSOR_TYPE,
-} sensorType_t;
 
-typedef enum {
-	START_SENSOR_STATE,
-	WAIT_SENSOR_STATE,
-	READ_SENSOR_STATE,
-	COMPLETED_SENSOR_STATE,
-} sensorState_t;
-
-#define ALARM_SENSOR_FLAG	0x01
-typedef uint8_t sensorFlags_t;
 
 sensorState_t sensorState = START_SENSOR_STATE;
 unsigned long waitSensorTime;
-
-typedef struct {
-	sensorType_t type;
-	sensorState_t state;
-	sensorFlags_t flags;
-	unsigned long waitTime;
-	byte data[4];
-	uint8_t addr;
-} sensor_t;
 
 sensor_t sensors[32];
 
 
 /* Analog sensor support */
-temp_t readAnalogSensor(int sensor)
+
+#define ANALOG_BASE_IDX		0
+
+temp_t readAnalogSensor(sensor_t *sensor)
 {
 	const uint8_t sensorPin[] = {
 		A0,
@@ -691,10 +668,11 @@ temp_t readAnalogSensor(int sensor)
 	};
 
 	sensorState = COMPLETED_SENSOR_STATE;
-	if(sensor < 0 || sensor >= (int)(sizeof(sensorPin)/sizeof(sensorPin[0])))
+	//if(sensor < 0 || sensor >= (int)(sizeof(sensorPin)/sizeof(sensorPin[0])))
+	if(sensor->type != ANALOG_SENSOR_TYPE)
 		return ERROR_TEMP;
 
-	long val = analogRead(sensorPin[sensor]);
+	long val = analogRead(sensor->addr);
 	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
 #ifdef DEBUG_SENSOR
 	testDebug.print("ADC Val: ");
@@ -721,7 +699,7 @@ void analogSensorInit(void)
 	};
 
 	for(int8_t i = sizeof(sensorPin)/sizeof(sensorPin[0])-1; i >= 0; i--) {
-		sensor_t *sensor = &sensors[i];
+		sensor_t *sensor = &sensors[i+ANALOG_BASE_IDX];
 		sensor->type = ANALOG_SENSOR_TYPE;
 		sensor->addr = sensorPin[i];
 	}
@@ -730,19 +708,22 @@ void analogSensorInit(void)
 
 /* LM75 Sensor support */
 
-#define LM75_BASE_ADDR	0x48
-#define LM75_MAX_ADDR	LM75_BASE_ADDR + 8
+#define LM75_BASE_IDX		8
+#define LM75_NUM_SENSORS	8
+#define LM75_BASE_ADDR		0x48
+//#define LM75_MAX_ADDR		LM75_BASE_ADDR + LM75_NUM_SENSORS
 
-temp_t readLM75Sensor(int sensor)
+temp_t readLM75Sensor(sensor_t *sensor)
 {
 	sensorState = COMPLETED_SENSOR_STATE;
-	if(sensor < 0 || sensor >= LM75_MAX_ADDR)
+	//if(sensor < 0 || sensor >= LM75_MAX_ADDR)
+	if(sensor->type != LM75_SENSOR_TYPE)
 		return ERROR_TEMP;
 
-	Wire.beginTransmission(LM75_BASE_ADDR + sensor);
+	Wire.beginTransmission(sensor->addr);
 	Wire.write((uint8_t)0U);
 	Wire.endTransmission();
-	Wire.requestFrom(LM75_BASE_ADDR + sensor, 2);
+	Wire.requestFrom(sensor->addr, (uint8_t)2);
 	long val = Wire.read() << 8;
 	val |= Wire.read();
 	val >>= 4;
@@ -755,8 +736,20 @@ temp_t readLM75Sensor(int sensor)
 	return temp;
 }
 
+void lm75SensorInit(void)
+{
+	for(int8_t i = LM75_NUM_SENSORS-1; i >= 0; i--) {
+		sensor_t *sensor = &sensors[i+LM75_BASE_IDX];
+		sensor->type = LM75_SENSOR_TYPE;
+		sensor->addr = LM75_BASE_ADDR + i;
+	}
+}
+
+
+#define HIH6130_BASE_IDX	16
+#define HIH6130_NUM_SENSORS	1
 #define HIH6130_BASE_ADDR	0x27
-#define HIH6130_MAX_ADDR	HIH6130_BASE_ADDR + 1
+//#define HIH6130_MAX_ADDR	HIH6130_BASE_ADDR + 1
 
 #define	HIH6130_NORMAL_STATUS		0x0000L
 #define	HIH6130_STALE_STATUS		0x4000L
@@ -764,25 +757,26 @@ temp_t readLM75Sensor(int sensor)
 #define	HIH6130_DIAGNOSTIC_STATUS	0xc000L
 #define HIH6130_STATUS_MASK		0xc000L
 
-temp_t readHIH6130Sensor(int sensor)
+temp_t readHIH6130Sensor(sensor_t *sensor)
 {
 	long humidityVal, tempVal;
 
-	if(sensor < 0 || sensor >= HIH6130_MAX_ADDR) {
+	//if(sensor < 0 || sensor >= HIH6130_MAX_ADDR) {
+	if(sensor->type != HIH6130_SENSOR_TYPE) {
 		sensorState = COMPLETED_SENSOR_STATE;
 		return ERROR_TEMP;
 	}
 
 	switch(sensorState) {
 	case START_SENSOR_STATE:
-		Wire.beginTransmission(HIH6130_BASE_ADDR + sensor);
+		Wire.beginTransmission(sensor->addr);
 		Wire.endTransmission();
 		sensorState = READ_SENSOR_STATE;
 		return 0;
 		break;
 
 	case READ_SENSOR_STATE:
-		Wire.requestFrom(HIH6130_BASE_ADDR + sensor, 4);
+		Wire.requestFrom(sensor->addr, (uint8_t)4);
 		humidityVal = Wire.read() << 8;
 		humidityVal |= Wire.read();
 		tempVal = Wire.read() << 8;
@@ -851,7 +845,18 @@ temp_t readHIH6130Sensor(int sensor)
 	return temp;
 }
 
+void hih6130SensorInit(void)
+{
+	for(int8_t i = HIH6130_NUM_SENSORS-1; i >= 0; i--) {
+		sensor_t *sensor = &sensors[i+HIH6130_BASE_IDX];
+		sensor->type = HIH6130_SENSOR_TYPE;
+		sensor->addr = HIH6130_BASE_ADDR + i;
+	}
+}
+
+
 #ifdef ONE_WIRE_SENSORS
+#define ONE_WIRE_BASE_IDX	19
 #define MAX_ONE_WIRE_SENSORS	5
 typedef struct {
 	byte addr[8];
@@ -870,6 +875,9 @@ void scanOneWireSensors(void)
 	debug.println("Scanning 1-Wire...");
 	for(i = 0; i < MAX_ONE_WIRE_SENSORS &&
 	    ds.search(oneWireSensors[i].addr); i++) {
+		sensor_t *sensor = &sensors[i+ONE_WIRE_BASE_IDX];
+		sensor->type = ONE_WIRE_SENSOR_TYPE;
+		sensor->addr = i;
 		debug.print("Found ROM =");
 		for(j = 0; j < 8; j++) {
 			debug.write(' ');
@@ -879,7 +887,7 @@ void scanOneWireSensors(void)
 	}
 }
 
-temp_t readOneWireSensor(int sensor)
+temp_t readOneWireSensor(sensor_t *sensor)
 {
 	int i;
 	byte present = 0;
@@ -888,15 +896,16 @@ temp_t readOneWireSensor(int sensor)
 	static byte *addr = NULL;
 	temp_t celsius = 0;
 
-	if(sensor < 0 || sensor >= MAX_ONE_WIRE_SENSORS ||
-	   oneWireSensors[sensor].addr[0] == 0x0) {
+	//if(sensor < 0 || sensor >= MAX_ONE_WIRE_SENSORS ||
+	//   oneWireSensors[sensor].addr[0] == 0x0) {
+	if(sensor->type != ONE_WIRE_SENSOR_TYPE) {
 		sensorState = COMPLETED_SENSOR_STATE;
 		return ERROR_TEMP;
 	}
 
 	switch(sensorState) {
 	case START_SENSOR_STATE:
-		addr = oneWireSensors[sensor].addr;
+		addr = oneWireSensors[sensor->addr].addr;
 #if 1
 		debug.print("ROM =");
 		for( i = 0; i < 8; i++) {
@@ -1089,17 +1098,17 @@ temp_t readOneWireSensor(int sensor)
 }
 #endif
 
-temp_t readSensor(int sensor)
+temp_t readSensor(sensor_t *sensor)
 {
-	if(sensor >= 0 && sensor < 16)
-		return readAnalogSensor(sensor - 0);
-	else if(sensor >= 16 && sensor < 24)
-		return readLM75Sensor(sensor - 16);
-	else if(sensor == 24)
-		readHIH6130Sensor(sensor - 24);
+	if(sensor->type == ANALOG_SENSOR_TYPE)
+		return readAnalogSensor(sensor);
+	else if(sensor->type == LM75_SENSOR_TYPE)
+		return readLM75Sensor(sensor);
+	else if(sensor->type == HIH6130_SENSOR_TYPE)
+		return readHIH6130Sensor(sensor);
 #ifdef ONE_WIRE_SENSORS
-	else if(sensor < 32)
-		readOneWireSensor(sensor - 25);
+	else if(sensor->type == ONE_WIRE_SENSOR_TYPE)
+		return readOneWireSensor(sensor);
 #endif
 	return ERROR_TEMP;
 }
@@ -1113,6 +1122,8 @@ void sensorInit(void)
 	}
 
 	analogSensorInit();
+	lm75SensorInit();
+	hih6130SensorInit();
 }
 
 
@@ -1229,6 +1240,7 @@ void xbeeHandler(void)
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
 #endif
 	byte *dataPtr;
+	uint8_t sensor;
 
 #ifdef DEBUG_XBEE
 	if(uart.available()) {
@@ -1275,7 +1287,10 @@ void xbeeHandler(void)
 			case 3: /* Query sensor */
 				if(rx.getDataLength() < 2)
 					break;
-				temp = readSensor(dataPtr[1]);
+				sensor = (uint8_t)dataPtr[1];
+				temp = ERROR_TEMP;
+				if(sensor < sizeof(sensors)/sizeof(sensors[0]))
+					temp = readSensor(&sensors[sensor]);
 				sensorPayload[1] = dataPtr[1];
 				*(uint32_t *)&sensorPayload[3] = clock;
 				*(uint16_t *)&sensorPayload[7] = (uint16_t)(temp / 0.0625f);
@@ -1433,16 +1448,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readAnalogSensor(0);
+			celsius = readAnalogSensor(&sensors[0 + ANALOG_BASE_IDX]);
+			testDebug.print("Analog(0): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("Analog(0): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1454,16 +1468,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readAnalogSensor(1);
+			celsius = readAnalogSensor(&sensors[1 + ANALOG_BASE_IDX]);
+			testDebug.print("Analog(1): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("Analog(1): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1475,16 +1488,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readLM75Sensor(7);
+			celsius = readLM75Sensor(&sensors[7 + LM75_BASE_IDX]);
+			testDebug.print("LM75(7): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("LM75(7): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1496,16 +1508,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readHIH6130Sensor(0);
+			celsius = readHIH6130Sensor(&sensors[0 + HIH6130_BASE_IDX]);
+			testDebug.print("HIH6130(0): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("HIH6130(0): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1518,16 +1529,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readOneWireSensor(0);
+			celsius = readOneWireSensor(&sensors[0 + ONE_WIRE_BASE_IDX]);
+			testDebug.print("1-Wire(0): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("1-Wire(0): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1539,16 +1549,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readOneWireSensor(1);
+			celsius = readOneWireSensor(&sensors[1 + ONE_WIRE_BASE_IDX]);
+			testDebug.print("1-Wire(1): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("1-Wire(1): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
@@ -1560,16 +1569,15 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readOneWireSensor(2);
+			celsius = readOneWireSensor(&sensors[2 + ONE_WIRE_BASE_IDX]);
+			testDebug.print("1-Wire(2): ");
 			if(sensorState == COMPLETED_SENSOR_STATE) {
+				printTemp(celsius);
 				sensorState = START_SENSOR_STATE;
 				sensor++;
-			}
-			testDebug.print("1-Wire(2): ");
-			if(sensorState == COMPLETED_SENSOR_STATE)
-				printTemp(celsius);
-			else
+			} else {
 				testDebug.println("Waiting...");
+			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
 			testDebug.print(millis() - startTime, DEC);
