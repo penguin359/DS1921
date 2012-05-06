@@ -169,63 +169,13 @@ uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
 uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0 };
 #endif
 
-uint32_t clock = 0;
+uint32_t clock;
 //elapsedMillis clockTick;
 unsigned long clockTick;
 unsigned long sensorTick;
 
 //#define D0 5
 //#define D1 6
-
-void scanOneWireSensors(void);
-void setup(void)
-{
-#ifdef DEBUG_XBEE
-	uart.begin(9600);
-#else
-#ifdef ARDUINO_UNO
-	debug.begin(9600);
-	pinMode(XBEE_RX_PIN, INPUT);
-	pinMode(XBEE_TX_PIN, OUTPUT);
-	xbeeSerial2.begin(9600);
-	xbee.setSerial(xbeeSerial2);
-#else
-	xbee.begin(9600);
-#endif
-#endif
-	delay(5000);
-	debug.println("Hello, World!");
-#ifdef LED_NOTIFICATION
-	pinMode(LED_PIN, OUTPUT);
-#endif
-#ifdef PIEZO_NOTIFICATION
-	pinMode(PIEZO_PIN, OUTPUT);
-	digitalWrite(PIEZO_PIN, LOW);
-#endif
-
-	/* Initialize Analog sensors */
-	analogReference(DEFAULT);
-	pinMode(A1, INPUT);
-	digitalWrite(A1, LOW);
-
-	/* Initialize Digital sensors */
-//#ifdef CORE_TEENSY
-//	pinMode(D0, INPUT);
-//	pinMode(D1, INPUT);
-//	digitalWrite(D0, HIGH); /* Turn on pull-ups */
-//	digitalWrite(D1, HIGH);
-//#else
-	pinMode(SCL, INPUT);
-	pinMode(SDA, INPUT);
-	digitalWrite(SCL, HIGH); /* Turn on pull-ups */
-	digitalWrite(SDA, HIGH);
-//#endif
-	Wire.begin();
-
-#ifdef ONE_WIRE_SENSORS
-	scanOneWireSensors();
-#endif
-}
 
 #if 0
 void debugPrint(char *str)
@@ -290,7 +240,11 @@ class SensorDebug : public Stream {
 	}
 };
 
+#ifdef CORE_TEENSY
+#define testDebug Serial
+#else
 SensorDebug testDebug = SensorDebug();
+#endif
 
 #ifdef ONE_WIRE_SENSORS
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
@@ -686,26 +640,43 @@ void printTemp(temp_t celsius)
 }
 
 typedef enum {
+	NONE_SENSOR_TYPE,
+	ANALOG_SENSOR_TYPE,
+	LM75_SENSOR_TYPE,
+	HIH6130_SENSOR_TYPE,
+	TC_SENSOR_TYPE,
+	ONE_WIRE_SENSOR_TYPE,
+} sensorType_t;
+
+typedef enum {
 	START_SENSOR_STATE,
 	WAIT_SENSOR_STATE,
 	READ_SENSOR_STATE,
 	COMPLETED_SENSOR_STATE,
 } sensorState_t;
 
+#define ALARM_SENSOR_FLAG	0x01
+typedef uint8_t sensorFlags_t;
+
 sensorState_t sensorState = START_SENSOR_STATE;
 unsigned long waitSensorTime;
 
 typedef struct {
+	sensorType_t type;
 	sensorState_t state;
+	sensorFlags_t flags;
 	unsigned long waitTime;
 	byte data[4];
+	uint8_t addr;
 } sensor_t;
 
 sensor_t sensors[32];
 
+
+/* Analog sensor support */
 temp_t readAnalogSensor(int sensor)
 {
-	const int sensorPin[] = {
+	const uint8_t sensorPin[] = {
 		A0,
 		A1,
 		A2,
@@ -732,6 +703,32 @@ temp_t readAnalogSensor(int sensor)
 
 	return temp;
 }
+
+void analogSensorInit(void)
+{
+	const int sensorPin[] = {
+		A0,
+		A1,
+		A2,
+		A3,
+#ifdef CORE_TEENSY
+		A4,
+		A5,
+#else
+		A6,
+		A7,
+#endif
+	};
+
+	for(int8_t i = sizeof(sensorPin)/sizeof(sensorPin[0])-1; i >= 0; i--) {
+		sensor_t *sensor = &sensors[i];
+		sensor->type = ANALOG_SENSOR_TYPE;
+		sensor->addr = sensorPin[i];
+	}
+}
+
+
+/* LM75 Sensor support */
 
 #define LM75_BASE_ADDR	0x48
 #define LM75_MAX_ADDR	LM75_BASE_ADDR + 8
@@ -1107,6 +1104,17 @@ temp_t readSensor(int sensor)
 	return ERROR_TEMP;
 }
 
+void sensorInit(void)
+{
+	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+		sensors[i].type = NONE_SENSOR_TYPE;
+		sensors[i].state = START_SENSOR_STATE;
+		sensors[i].flags = 0;
+	}
+
+	analogSensorInit();
+}
+
 
 
 #ifdef LED_NOTIFICATION
@@ -1152,6 +1160,12 @@ void ledHandler(void)
 		ledOff();
 		break;
 	}
+}
+
+void ledInit(void)
+{
+	pinMode(LED_PIN, OUTPUT);
+	ledOff();
 }
 #endif
 
@@ -1200,50 +1214,21 @@ void piezoHandler(void)
 		break;
 	}
 }
+
+void piezoInit(void)
+{
+	pinMode(PIEZO_PIN, OUTPUT);
+	piezoOff();
+}
 #endif
 
 
-
-void loop(void)
+void xbeeHandler(void)
 {
 #ifndef DEBUG_XBEE
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
 #endif
-	temp_t celsius;
 	byte *dataPtr;
-#ifdef TIMING_DEBUG
-	unsigned long mainLoopStartTime = millis();
-#endif
-	static int sensor = 0;
-
-#if 0
-	//set_sleep_mode(SLEEP_MODE_IDLE);
-	//set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-	set_sleep_mode(SLEEP_MODE_PWR_SAVE);
-	cli();
-	sleep_mode();
-#endif
-#ifdef LED_NOTIFICATION
-	ledHandler();
-#endif
-#ifdef PIEZO_NOTIFICATION
-	piezoHandler();
-#endif
-	//return;
-
-	unsigned long currentMillis = millis();
-	if(currentMillis - clockTick >= 1000UL) {
-		clockTick += 1000UL;
-		clock++;
-		debug.print("UTime=");
-		debug.println(clock, DEC);
-	}
-
-#ifdef ONE_WIRE_SENSORS
-	if(debug.available()) {
-		parseSerial(debug.read());
-	}
-#endif
 
 #ifdef DEBUG_XBEE
 	if(uart.available()) {
@@ -1335,6 +1320,105 @@ void loop(void)
 		debug.println(xbee.getResponse().getErrorCode(), DEC);
 	}
 #endif
+
+}
+
+void xbeeInit(void)
+{
+#ifdef DEBUG_XBEE
+	uart.begin(9600);
+#else
+#ifdef ARDUINO_UNO
+	debug.begin(9600);
+	pinMode(XBEE_RX_PIN, INPUT);
+	pinMode(XBEE_TX_PIN, OUTPUT);
+	xbeeSerial2.begin(9600);
+	xbee.setSerial(xbeeSerial2);
+#else
+	xbee.begin(9600);
+#endif
+#endif
+}
+
+
+
+void setup(void)
+{
+	xbeeInit();
+	delay(5000);
+	debug.println("Hello, World!");
+
+#ifdef LED_NOTIFICATION
+	ledInit();
+#endif
+#ifdef PIEZO_NOTIFICATION
+	piezoInit();
+#endif
+
+	/* Initialize Analog sensors */
+	analogReference(DEFAULT);
+	pinMode(A1, INPUT);
+	digitalWrite(A1, LOW);
+
+	/* Initialize Digital sensors */
+//#ifdef CORE_TEENSY
+//	pinMode(D0, INPUT);
+//	pinMode(D1, INPUT);
+//	digitalWrite(D0, HIGH); /* Turn on pull-ups */
+//	digitalWrite(D1, HIGH);
+//#else
+	pinMode(SCL, INPUT);
+	pinMode(SDA, INPUT);
+	digitalWrite(SCL, HIGH); /* Turn on pull-ups */
+	digitalWrite(SDA, HIGH);
+//#endif
+	Wire.begin();
+
+	sensorInit();
+
+#ifdef ONE_WIRE_SENSORS
+	scanOneWireSensors();
+#endif
+}
+
+void loop(void)
+{
+	temp_t celsius;
+#ifdef TIMING_DEBUG
+	unsigned long mainLoopStartTime = millis();
+#endif
+	static int sensor = 0;
+
+#if 0
+	//set_sleep_mode(SLEEP_MODE_IDLE);
+	//set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+	set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+	cli();
+	sleep_mode();
+#endif
+#ifdef LED_NOTIFICATION
+	ledHandler();
+#endif
+#ifdef PIEZO_NOTIFICATION
+	piezoHandler();
+#endif
+	//return;
+
+	unsigned long currentMillis = millis();
+	if(currentMillis - clockTick >= 1000UL) {
+		clockTick += 1000UL;
+		clock++;
+		debug.print("UTime=");
+		debug.println(clock, DEC);
+	}
+
+#ifdef ONE_WIRE_SENSORS
+	if(debug.available()) {
+		parseSerial(debug.read());
+	}
+#endif
+
+	xbeeHandler();
 
 	if(currentMillis - sensorTick >= 5000UL) {
 #ifdef TIMING_DEBUG
