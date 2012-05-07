@@ -314,9 +314,20 @@ int processApi(unsigned char *buf, int len)
 			break;
 
 		case QUERY_SENSOR_SENSOR_CMD | 0x80:
-			node = findNodeByAddr64((macAddr64_t *)&buf[1]);
-			if(node != NULL)
-				printf("Sensor(%d) on %s is %.2f°F @ %u\n", (int)*(uint8_t *)&buf[12+1], node->identifier, (float)(int)*(uint16_t *)&buf[12+7] * 0.0625f * 9.f/5.f + 32.f, (unsigned int)*(uint32_t *)&buf[12+3]);
+			{
+				int num = (int)*(uint8_t *)&buf[12+1];
+				int val = (int)*(uint16_t *)&buf[12+7];
+				int val2 = (int)*(uint16_t *)&buf[12+9];
+
+				node = findNodeByAddr64((macAddr64_t *)&buf[1]);
+				if(node != NULL) {
+					if(num != 16)
+						printf("Sensor(%d) on %s is %.2f°F @ %u\n", num, node->identifier, (double)(val - (273 << 4)) * 0.0625 * 9./5. + 32., (unsigned int)*(uint32_t *)&buf[12+3]);
+					else
+						printf("Sensor(%d) on %s is %.2f°F and %.2f%% humidity @ %u\n", num, node->identifier, ((double)val / (double)(1 << 14) * 165. - 40.) * 9./5. + 32., (double)val2 / (double)(1 << 14) * 100., (unsigned int)*(uint32_t *)&buf[12+3]);
+				}
+				//temp = (double)val / (double)(1 << 14) * 165. - 40.;
+			}
 			return 0;
 			break;
 
