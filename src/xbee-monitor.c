@@ -75,12 +75,33 @@ int main(int argc, char **argv)
 				case 4:
 				case 5:
 				case 6:
+				case 7:
+				case 8:
+				case 9:
+				case 10:
+				case 11:
+				case 12:
+				case 13:
+				case 14:
+				case 15:
+				case 16:
+				case 17:
 				case 18:
+				case 19:
+				case 20:
+				case 21:
+				case 22:
+				case 23:
+				case 24:
 				case 25:
 				case 26:
 				case 27:
 				case 28:
 				case 29:
+				case 30:
+				case 31:
+				case 32:
+				case 33:
 					querySensor(xbee, &node->addr64, type-2);
 					break;
 
@@ -93,15 +114,15 @@ int main(int argc, char **argv)
 				if(type == 0+2)
 					type = 1+2;
 				else if(type == 1+2)
-					type = 23+2;
-				else if(type == 23+2)
-					type = 24+2;
-				else if(type == 24+2)
-					type = 25+2;
-				else if(type == 25+2)
-					type = 26+2;
-				else if(type == 26+2)
-					type = 27+2;
+					type = 15+2;
+				else if(type == 15+2)
+					type = 16+2;
+				else if(type == 16+2)
+					type = 19+2;
+				else if(type == 19+2)
+					type = 20+2;
+				else if(type == 20+2)
+					type = 21+2;
 				else
 					type = 0+2;
 			}
