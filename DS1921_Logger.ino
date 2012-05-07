@@ -166,7 +166,7 @@ XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
 uint8_t payload[] = { 0x04, 'H', 'i' };
 uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
 //uint8_t sensorPayload[] = { 'S', 'e', 'n', 's', 'o', 'r', '-' };
-uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0 };
+uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0 };
 #endif
 
 uint32_t clock;
@@ -671,6 +671,9 @@ temp_t readAnalogSensor(sensor_t *sensor)
 
 	long val = analogRead(sensor->addr);
 	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
+	uint16_t tempInt = (uint16_t)((temp + 273.) * 8.);
+	tempInt <<= 2;
+	sensor->data16[0] = val * AREF_MV * 16 / 1023 / 10 + (CELSIUS_TO_KELVIN << 4) - (50 << 4);
 #ifdef DEBUG_SENSOR
 	testDebug.print("ADC Val: ");
 	testDebug.println(val, DEC);
@@ -721,9 +724,10 @@ temp_t readLM75Sensor(sensor_t *sensor)
 	Wire.write((uint8_t)0U);
 	Wire.endTransmission();
 	Wire.requestFrom(sensor->addr, (uint8_t)2);
-	long val = Wire.read() << 8;
+	uint16_t val = Wire.read() << 8;
 	val |= Wire.read();
 	val >>= 4;
+	sensor->data16[0] = val + (CELSIUS_TO_KELVIN << 4);
 	temp_t temp = (temp_t)val * 0.0625f;
 #ifdef DEBUG_SENSOR
 	testDebug.print("I2C Val: ");
@@ -813,6 +817,8 @@ temp_t readHIH6130Sensor(sensor_t *sensor)
 	testDebug.print("%, Temperature: ");
 #endif
 	tempVal >>= 2;
+	sensor->data16[0] = tempVal;
+	sensor->data16[1] = humidityVal & ~HIH6130_STATUS_MASK;
 	//temp_t temp = (temp_t)tempVal / (float)(2^14 - 1) * (125.f - -40.f);
 	//temp_t temp = (temp_t)(tempVal & 16383L) / 16383.f * (125.f - -40.f) + -40.f;
 	temp_t temp = (float)tempVal / 16383.f * 165.f - 40.f;
@@ -963,6 +969,7 @@ temp_t readOneWireSensor(sensor_t *sensor)
 			debug.print(" ");
 			debug.println(data[0], HEX);
 #endif
+			sensor->data16[0] = (data[0] - (40 << 1) + (CELSIUS_TO_KELVIN << 1)) << 3;
 			celsius = (temp_t)data[0] / 2.0f - 40.0f;
 
 #if 0
@@ -1057,6 +1064,7 @@ temp_t readOneWireSensor(sensor_t *sensor)
 				else if (cfg == 0x40) raw = raw << 1; // 11 bit res, 375 ms
 				// default is 12 bit resolution, 750 ms conversion time
 			}
+			sensor->data16[0] = raw + (CELSIUS_TO_KELVIN << 4);
 			celsius = (temp_t)raw / 16.0;
 		}
 		sensor->state = COMPLETED_SENSOR_STATE;
@@ -1285,7 +1293,7 @@ void xbeeHandler(void)
 #else
 	xbee.readPacket(100);
 	if(xbee.getResponse().isAvailable()) {
-		temp_t temp;
+		uint32_t temp;
 		switch(xbee.getResponse().getApiId()) {
 		case ZB_RX_RESPONSE:
 			xbee.getResponse().getZBRxResponse(rx);
@@ -1321,12 +1329,14 @@ void xbeeHandler(void)
 				if(rx.getDataLength() < 2)
 					break;
 				sensor = (uint8_t)dataPtr[1];
-				temp = ERROR_TEMP;
+				//temp = ERROR_TEMP;
+				temp = -1;
 				if(sensor < sizeof(sensors)/sizeof(sensors[0]))
-					temp = readSensor(&sensors[sensor]);
+					//temp = readSensor(&sensors[sensor]);
+					temp = sensors[sensor].data32[0];
 				sensorPayload[1] = dataPtr[1];
 				*(uint32_t *)&sensorPayload[3] = clock;
-				*(uint16_t *)&sensorPayload[7] = (uint16_t)(temp / 0.0625f);
+				*(uint32_t *)&sensorPayload[7] = temp;
 				zbTx.setPayload(sensorPayload);
 				zbTx.setPayloadLength(sizeof(sensorPayload));
 				xbee.send(zbTx);

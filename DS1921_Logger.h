@@ -22,9 +22,15 @@ typedef struct {
 	sensorState_t state;
 	sensorFlags_t flags;
 	unsigned long waitTime;
-	uint8_t data[4];
+	union {
+		uint8_t data8[4];
+		uint16_t data16[2];
+		uint32_t data32[1];
+	};
 	uint8_t addr;
 } sensor_t;
 
 typedef float temp_t;
 #define ERROR_TEMP	-256.f
+
+#define CELSIUS_TO_KELVIN	273
