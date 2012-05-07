@@ -648,7 +648,7 @@ sensor_t sensors[32];
 
 #define ANALOG_BASE_IDX		0
 
-temp_t readAnalogSensor(sensor_t *sensor)
+sensorState_t readAnalogSensor(sensor_t *sensor)
 {
 	const uint8_t sensorPin[] = {
 		A0,
@@ -664,22 +664,19 @@ temp_t readAnalogSensor(sensor_t *sensor)
 #endif
 	};
 
-	sensor->state = COMPLETED_SENSOR_STATE;
-	//if(sensor < 0 || sensor >= (int)(sizeof(sensorPin)/sizeof(sensorPin[0])))
 	if(sensor->type != ANALOG_SENSOR_TYPE)
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 
 	long val = analogRead(sensor->addr);
-	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
-	uint16_t tempInt = (uint16_t)((temp + 273.) * 8.);
-	tempInt <<= 2;
 	sensor->data16[0] = val * AREF_MV * 16 / 1023 / 10 + (CELSIUS_TO_KELVIN << 4) - (50 << 4);
 #ifdef DEBUG_SENSOR
+	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
 	testDebug.print("ADC Val: ");
 	testDebug.println(val, DEC);
+	printTemp(temp);
 #endif
 
-	return temp;
+	return COMPLETED_SENSOR_STATE;
 }
 
 void analogSensorInit(void)
@@ -713,12 +710,10 @@ void analogSensorInit(void)
 #define LM75_BASE_ADDR		0x48
 //#define LM75_MAX_ADDR		LM75_BASE_ADDR + LM75_NUM_SENSORS
 
-temp_t readLM75Sensor(sensor_t *sensor)
+sensorState_t readLM75Sensor(sensor_t *sensor)
 {
-	sensor->state = COMPLETED_SENSOR_STATE;
-	//if(sensor < 0 || sensor >= LM75_MAX_ADDR)
 	if(sensor->type != LM75_SENSOR_TYPE)
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 
 	Wire.beginTransmission(sensor->addr);
 	Wire.write((uint8_t)0U);
@@ -728,13 +723,14 @@ temp_t readLM75Sensor(sensor_t *sensor)
 	val |= Wire.read();
 	val >>= 4;
 	sensor->data16[0] = val + (CELSIUS_TO_KELVIN << 4);
-	temp_t temp = (temp_t)val * 0.0625f;
 #ifdef DEBUG_SENSOR
+	temp_t temp = (temp_t)val * 0.0625f;
 	testDebug.print("I2C Val: ");
 	testDebug.println(val, DEC);
+	printTemp(temp);
 #endif
 
-	return temp;
+	return COMPLETED_SENSOR_STATE;
 }
 
 void lm75SensorInit(void)
@@ -758,22 +754,18 @@ void lm75SensorInit(void)
 #define	HIH6130_DIAGNOSTIC_STATUS	0xc000L
 #define HIH6130_STATUS_MASK		0xc000L
 
-temp_t readHIH6130Sensor(sensor_t *sensor)
+sensorState_t readHIH6130Sensor(sensor_t *sensor)
 {
 	long humidityVal, tempVal;
 
-	//if(sensor < 0 || sensor >= HIH6130_MAX_ADDR) {
-	if(sensor->type != HIH6130_SENSOR_TYPE) {
-		sensor->state = COMPLETED_SENSOR_STATE;
-		return ERROR_TEMP;
-	}
+	if(sensor->type != HIH6130_SENSOR_TYPE)
+		return COMPLETED_SENSOR_STATE;
 
 	switch(sensor->state) {
 	case START_SENSOR_STATE:
 		Wire.beginTransmission(sensor->addr);
 		Wire.endTransmission();
-		sensor->state = READ_SENSOR_STATE;
-		return 0;
+		return READ_SENSOR_STATE;
 		break;
 
 	case READ_SENSOR_STATE:
@@ -789,13 +781,11 @@ temp_t readHIH6130Sensor(sensor_t *sensor)
 		//testDebug.print(",");
 		//testDebug.println(HIH6130_STALE_STATUS, HEX);
 		if((humidityVal & HIH6130_STATUS_MASK) == HIH6130_STALE_STATUS)
-			return 0;
-		sensor->state = COMPLETED_SENSOR_STATE;
+			return READ_SENSOR_STATE;
 		break;
 
 	default:
-		sensor->state = COMPLETED_SENSOR_STATE;
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 		break;
 	}
 	long status = humidityVal & HIH6130_STATUS_MASK;
@@ -819,11 +809,14 @@ temp_t readHIH6130Sensor(sensor_t *sensor)
 	tempVal >>= 2;
 	sensor->data16[0] = tempVal;
 	sensor->data16[1] = humidityVal & ~HIH6130_STATUS_MASK;
+#ifdef DEBUG_SENSOR
 	//temp_t temp = (temp_t)tempVal / (float)(2^14 - 1) * (125.f - -40.f);
 	//temp_t temp = (temp_t)(tempVal & 16383L) / 16383.f * (125.f - -40.f) + -40.f;
 	temp_t temp = (float)tempVal / 16383.f * 165.f - 40.f;
 	testDebug.print(temp * 9.f/5.f + 32.f);
 	testDebug.println("°F");
+	printTemp(temp);
+#endif
 
 	switch(status) {
 	case HIH6130_NORMAL_STATUS:
@@ -831,21 +824,21 @@ temp_t readHIH6130Sensor(sensor_t *sensor)
 
 	case HIH6130_COMMAND_MODE_STATUS:
 		testDebug.println("Command Mode Error");
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 		break;
 
 	case HIH6130_DIAGNOSTIC_STATUS:
 		testDebug.println("Diagnostic Error");
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 		break;
 
 	default:
 		testDebug.println("Unknown Error");
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 		break;
 	}
 
-	return temp;
+	return COMPLETED_SENSOR_STATE;
 }
 
 void hih6130SensorInit(void)
@@ -867,21 +860,17 @@ typedef struct {
 
 oneWireSensor_t oneWireSensors[MAX_ONE_WIRE_SENSORS];
 
-temp_t readOneWireSensor(sensor_t *sensor)
+sensorState_t readOneWireSensor(sensor_t *sensor)
 {
 	int i;
 	byte present = 0;
 	static byte type_s = 0, type_19 = 0;
 	byte data[12];
 	static byte *addr = NULL;
-	temp_t celsius = 0;
+	temp_t temp = 0;
 
-	//if(sensor < 0 || sensor >= MAX_ONE_WIRE_SENSORS ||
-	//   oneWireSensors[sensor].addr[0] == 0x0) 
-	if(sensor->type != ONE_WIRE_SENSOR_TYPE) {
-		sensor->state = COMPLETED_SENSOR_STATE;
-		return ERROR_TEMP;
-	}
+	if(sensor->type != ONE_WIRE_SENSOR_TYPE)
+		return COMPLETED_SENSOR_STATE;
 
 	switch(sensor->state) {
 	case START_SENSOR_STATE:
@@ -896,8 +885,7 @@ temp_t readOneWireSensor(sensor_t *sensor)
 
 		if (OneWire::crc8(addr, 7) != addr[7]) {
 			debug.println("CRC is not valid!");
-			sensor->state = COMPLETED_SENSOR_STATE;
-			return ERROR_TEMP;
+			return COMPLETED_SENSOR_STATE;
 		}
 		debug.println();
 
@@ -924,15 +912,14 @@ temp_t readOneWireSensor(sensor_t *sensor)
 #if 0
 			debug.println("Device is not a DS18x20 family device.");
 #endif
-			sensor->state = COMPLETED_SENSOR_STATE;
-			return ERROR_TEMP;
+			return COMPLETED_SENSOR_STATE;
 		}
 
 		ds.reset();
 		ds.select(addr);
 		ds.write(DS1921_CONVERT_TEMP, 1);         // start conversion, with parasite power on at the end
 		sensor->waitTime = millis() + 1000UL;
-		sensor->state = WAIT_SENSOR_STATE;
+		return WAIT_SENSOR_STATE;
 		break;
 
 	case WAIT_SENSOR_STATE:
@@ -940,9 +927,8 @@ temp_t readOneWireSensor(sensor_t *sensor)
 		//delay(1000);     // maybe 750ms is enough, maybe not
 		// we might do a ds.depower() here, but the reset will take care of it.
 		if(millis() < sensor->waitTime)
-			break;
+			return WAIT_SENSOR_STATE;
 
-		sensor->state = COMPLETED_SENSOR_STATE;
 		present = ds.reset();
 		ds.select(addr);
 		if(type_19) {
@@ -970,7 +956,7 @@ temp_t readOneWireSensor(sensor_t *sensor)
 			debug.println(data[0], HEX);
 #endif
 			sensor->data16[0] = (data[0] - (40 << 1) + (CELSIUS_TO_KELVIN << 1)) << 3;
-			celsius = (temp_t)data[0] / 2.0f - 40.0f;
+			temp = (temp_t)data[0] / 2.0f - 40.0f;
 
 #if 0
 			if(!writeRtc) {
@@ -1065,18 +1051,19 @@ temp_t readOneWireSensor(sensor_t *sensor)
 				// default is 12 bit resolution, 750 ms conversion time
 			}
 			sensor->data16[0] = raw + (CELSIUS_TO_KELVIN << 4);
-			celsius = (temp_t)raw / 16.0;
+			temp = (temp_t)raw / 16.0;
 		}
-		sensor->state = COMPLETED_SENSOR_STATE;
 		break;
 
 	default:
-		sensor->state = COMPLETED_SENSOR_STATE;
-		return ERROR_TEMP;
+		return COMPLETED_SENSOR_STATE;
 		break;
 	}
 
-	return celsius;
+#ifdef SENSOR_DEBUG
+	printTemp(temp);
+#endif
+	return COMPLETED_SENSOR_STATE;
 }
 
 void oneWireSensorInit(void)
@@ -1103,7 +1090,7 @@ void oneWireSensorInit(void)
 }
 #endif
 
-temp_t readSensor(sensor_t *sensor)
+sensorState_t readSensor(sensor_t *sensor)
 {
 	if(sensor->type == ANALOG_SENSOR_TYPE)
 		return readAnalogSensor(sensor);
@@ -1116,8 +1103,22 @@ temp_t readSensor(sensor_t *sensor)
 		return readOneWireSensor(sensor);
 #endif
 
-	sensor->state = COMPLETED_SENSOR_STATE;
-	return ERROR_TEMP;
+	return COMPLETED_SENSOR_STATE;
+}
+
+void processSensor(sensor_t *sensor)
+{
+	sensorState_t state = sensor->state;
+
+	if(state < COMPLETED_SENSOR_STATE) {
+		if(state == WAIT_SENSOR_STATE) {
+			if(millis() < sensor->waitTime)
+				return;
+			sensor->state = READ_SENSOR_STATE;
+		}
+		sensor->state = readSensor(sensor);
+		return;
+	}
 }
 
 void printSensor(sensor_t *sensor)
@@ -1291,7 +1292,7 @@ void xbeeHandler(void)
 		debug.println("]");
 	}
 #else
-	xbee.readPacket(100);
+	xbee.readPacket();
 	if(xbee.getResponse().isAvailable()) {
 		uint32_t temp;
 		switch(xbee.getResponse().getApiId()) {
@@ -1329,10 +1330,8 @@ void xbeeHandler(void)
 				if(rx.getDataLength() < 2)
 					break;
 				sensor = (uint8_t)dataPtr[1];
-				//temp = ERROR_TEMP;
 				temp = -1;
 				if(sensor < sizeof(sensors)/sizeof(sensors[0]))
-					//temp = readSensor(&sensors[sensor]);
 					temp = sensors[sensor].data32[0];
 				sensorPayload[1] = dataPtr[1];
 				*(uint32_t *)&sensorPayload[3] = clock;
@@ -1437,7 +1436,6 @@ void setup(void)
 
 void loop(void)
 {
-	temp_t celsius;
 #ifdef TIMING_DEBUG
 	unsigned long mainLoopStartTime = millis();
 #endif
@@ -1496,10 +1494,9 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			celsius = readSensor(sensor);
+			readSensor(sensor);
 			printSensor(sensor);
 			if(sensor->state == COMPLETED_SENSOR_STATE) {
-				printTemp(celsius);
 				sensorNum++;
 				sensor = &sensors[sensorNum];
 				sensor->state = START_SENSOR_STATE;
