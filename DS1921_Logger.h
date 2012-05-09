@@ -5,6 +5,7 @@ typedef enum {
 	HIH6130_SENSOR_TYPE,
 	TC_SENSOR_TYPE,
 	ONE_WIRE_SENSOR_TYPE,
+	LIGHT_SENSOR_TYPE,
 } sensorType_t;
 
 typedef enum {
@@ -13,13 +14,14 @@ typedef enum {
 	READ_SENSOR_STATE,
 	COMPLETED_SENSOR_STATE,
 	ERROR_SENSOR_STATE,
-	XBEE_SEND_STATE,
+	XBEE_SEND_SENSOR_STATE,
 } sensorState_t;
 
 #define ALARM_SENSOR_FLAG	0x01
 typedef uint8_t sensorFlags_t;
 
 typedef struct {
+	uint8_t id;
 	sensorType_t type;
 	sensorState_t state;
 	sensorFlags_t flags;

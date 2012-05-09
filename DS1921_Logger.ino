@@ -650,16 +650,26 @@ sensor_t sensors[32];
 
 sensorState_t readAnalogSensor(sensor_t *sensor)
 {
-	if(sensor->type != ANALOG_SENSOR_TYPE)
+	if(sensor->type != ANALOG_SENSOR_TYPE &&
+	   sensor->type != LIGHT_SENSOR_TYPE)
 		return ERROR_SENSOR_STATE;
 
 	long val = analogRead(sensor->addr);
-	sensor->data16[0] = val * AREF_MV * 16 / 1023 / 10 + (CELSIUS_TO_KELVIN << 4) - (50 << 4);
+	if(sensor->type == LIGHT_SENSOR_TYPE)
+		sensor->data16[0] = val << 5 | (val >> 5);
+	else
+		sensor->data16[0] = val * AREF_MV * 16 / 1023 / 10 + (CELSIUS_TO_KELVIN << 4) - (50 << 4);
 #ifdef DEBUG_SENSOR
 	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
 	testDebug.print("ADC Val: ");
 	testDebug.println(val, DEC);
-	printTemp(temp);
+	if(sensor->type == LIGHT_SENSOR_TYPE) {
+		testDebug.print("  L=");
+		testDebug.print((double)val * 100. / 1023.);
+		testDebug.println("%");
+	} else {
+		printTemp(temp);
+	}
 #endif
 
 	return COMPLETED_SENSOR_STATE;
@@ -690,6 +700,8 @@ void analogSensorInit(void)
 			continue;
 		sensor_t *sensor = &sensors[i+ANALOG_BASE_IDX];
 		sensor->type = ANALOG_SENSOR_TYPE;
+		if(addr == A2)
+			sensor->type = LIGHT_SENSOR_TYPE;
 		sensor->addr = addr;
 	}
 }
@@ -983,7 +995,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 		ds.reset();
 		ds.select(addr);
 		ds.write(DS1921_CONVERT_TEMP, 1);         // start conversion, with parasite power on at the end
-		sensor->waitTime = millis() + 1000UL;
+		sensor->waitTime = millis() + 750UL;
 		return WAIT_SENSOR_STATE;
 		break;
 
@@ -1159,7 +1171,8 @@ void oneWireSensorInit(void)
 
 sensorState_t readSensor(sensor_t *sensor)
 {
-	if(sensor->type == ANALOG_SENSOR_TYPE)
+	if(sensor->type == ANALOG_SENSOR_TYPE ||
+	   sensor->type == LIGHT_SENSOR_TYPE)
 		return readAnalogSensor(sensor);
 	else if(sensor->type == LM75_SENSOR_TYPE)
 		return readLM75Sensor(sensor);
@@ -1175,6 +1188,7 @@ sensorState_t readSensor(sensor_t *sensor)
 
 void processSensor(sensor_t *sensor)
 {
+	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
 	sensorState_t state = sensor->state;
 
 	if(state < COMPLETED_SENSOR_STATE) {
@@ -1188,6 +1202,23 @@ void processSensor(sensor_t *sensor)
 			sensor->readingTime = clock;
 		sensor->state = state;
 		return;
+	}
+
+	switch(state) {
+	case COMPLETED_SENSOR_STATE:
+		sensorPayload[1] = sensor->id;
+		sensorPayload[2] = sensor->type;
+		*(uint32_t *)&sensorPayload[3] = sensor->readingTime;
+		*(uint32_t *)&sensorPayload[7] = sensor->data32[0];
+		zbTx.setPayload(sensorPayload);
+		zbTx.setPayloadLength(sizeof(sensorPayload));
+		xbee.send(zbTx);
+		sensor->state = XBEE_SEND_SENSOR_STATE;
+		break;
+
+	default:
+		sensor->state = START_SENSOR_STATE;
+		break;
 	}
 }
 
@@ -1213,6 +1244,10 @@ void printSensor(sensor_t *sensor)
 		testDebug.print("1-Wire(");
 		idx -= ONE_WIRE_BASE_IDX;
 		break;
+	case LIGHT_SENSOR_TYPE:
+		testDebug.print("Light(");
+		idx -= ANALOG_BASE_IDX;
+		break;
 	default:
 		testDebug.print("Unknown(");
 		idx -= 0;
@@ -1225,6 +1260,7 @@ void printSensor(sensor_t *sensor)
 void sensorInit(void)
 {
 	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+		sensors[i].id = i;
 		sensors[i].type = NONE_SENSOR_TYPE;
 		sensors[i].state = START_SENSOR_STATE;
 		sensors[i].flags = 0;
@@ -1401,8 +1437,10 @@ void xbeeHandler(void)
 					break;
 				sensor = (uint8_t)dataPtr[1];
 				temp = -1;
-				if(sensor < sizeof(sensors)/sizeof(sensors[0]))
+				if(sensor < sizeof(sensors)/sizeof(sensors[0])) {
 					temp = sensors[sensor].data32[0];
+					sensorPayload[2] = sensors[sensor].type;
+				}
 				sensorPayload[1] = dataPtr[1];
 				*(uint32_t *)&sensorPayload[3] = clock;
 				*(uint32_t *)&sensorPayload[7] = temp;
@@ -1568,6 +1606,7 @@ void loop(void)
 			processSensor(sensor);
 			printSensor(sensor);
 			if(sensor->state >= COMPLETED_SENSOR_STATE) {
+				processSensor(sensor);
 				sensorNum++;
 				sensor = &sensors[sensorNum];
 				sensor->state = START_SENSOR_STATE;
