@@ -246,6 +246,18 @@ class SensorDebug : public Stream {
 SensorDebug testDebug = SensorDebug();
 #endif
 
+
+uint8_t frameId = -1;
+
+uint8_t getFrameId(void)
+{
+	frameId++;
+	if(frameId == 0)
+		frameId = 1;
+
+	return frameId;
+}
+
 #ifdef ONE_WIRE_SENSORS
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
 {
@@ -1206,14 +1218,32 @@ void processSensor(sensor_t *sensor)
 
 	switch(state) {
 	case COMPLETED_SENSOR_STATE:
+		frameId = getFrameId();
+		sensor->frameId = frameId;
 		sensorPayload[1] = sensor->id;
 		sensorPayload[2] = sensor->type;
 		*(uint32_t *)&sensorPayload[3] = sensor->readingTime;
 		*(uint32_t *)&sensorPayload[7] = sensor->data32[0];
 		zbTx.setPayload(sensorPayload);
 		zbTx.setPayloadLength(sizeof(sensorPayload));
+		zbTx.setFrameId(frameId);
 		xbee.send(zbTx);
+		sensor->waitTime = millis() + 5000UL;
 		sensor->state = XBEE_SEND_SENSOR_STATE;
+		break;
+
+	case XBEE_SEND_SENSOR_STATE:
+		if(millis() < sensor->waitTime)
+			return;
+		/* XXX Failed to send sensor data */
+		sensor->state = XBEE_ACK_SENSOR_STATE;
+		break;
+
+	case ERROR_SENSOR_STATE:
+	case XBEE_ACK_SENSOR_STATE:
+	case STOP_SENSOR_STATE:
+		/* nothing more to do once sensor data has been acknowledged */
+		sensor->state = STOP_SENSOR_STATE;
 		break;
 
 	default:
@@ -1466,6 +1496,16 @@ void xbeeHandler(void)
 				debug.print("Failed with status ");
 				debug.println(txStatus.getDeliveryStatus(), HEX);
 			}
+			for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+				sensor_t *sensor = &sensors[i];
+				if(sensor->type != NONE_SENSOR_TYPE && sensor->state == XBEE_SEND_SENSOR_STATE && sensor->frameId == txStatus.getFrameId()) {
+					sensor->state = XBEE_ACK_SENSOR_STATE;
+#ifdef DEBUG_SENSOR
+					printSensor(sensor);
+					testDebug.println("Sensor ACK");
+#endif
+				}
+			}
 			break;
 
 		case MODEM_STATUS_RESPONSE:
@@ -1605,7 +1645,7 @@ void loop(void)
 #endif
 			processSensor(sensor);
 			printSensor(sensor);
-			if(sensor->state >= COMPLETED_SENSOR_STATE) {
+			if(sensor->state >= STOP_SENSOR_STATE) {
 				processSensor(sensor);
 				sensorNum++;
 				sensor = &sensors[sensorNum];
