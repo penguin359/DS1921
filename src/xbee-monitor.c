@@ -110,7 +110,8 @@ int main(int argc, char **argv)
 					break;
 				}
 
-				//type = (type+1) % 6;
+				type = (type+1) % 2;
+#if 0
 				if(type == 0+2)
 					type = 1+2;
 				else if(type == 1+2)
@@ -127,6 +128,7 @@ int main(int argc, char **argv)
 					type = 21+2;
 				else
 					type = 0+2;
+#endif
 			}
 #if 0
 			if(sendAt(xbee, FREE_CHILD_NODES_AT_CMD, 0) < 0) {
