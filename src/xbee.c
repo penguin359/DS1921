@@ -315,9 +315,12 @@ int processApi(unsigned char *buf, int len)
 
 		case QUERY_SENSOR_SENSOR_CMD | 0x80:
 			{
-				int num = (int)*(uint8_t *)&buf[12+1];
-				int val = (int)*(uint16_t *)&buf[12+7];
-				int val2 = (int)*(uint16_t *)&buf[12+9];
+				struct querySensorResponse *sensor =
+				    (struct querySensorResponse *)&buf[12];
+				int num = sensor->sensor;
+				int type = sensor->type;
+				int val = sensor->data16[0];
+				int val2 = sensor->data16[1];
 
 				node = findNodeByAddr64((macAddr64_t *)&buf[1]);
 				if(node != NULL) {
@@ -331,7 +334,7 @@ int processApi(unsigned char *buf, int len)
 			return 0;
 			break;
 
-		case 0x04:
+		case DEBUG_SENSOR_CMD:
 			printf("Debug: '");
 			fflush(stdout);
 			buf += 13;
