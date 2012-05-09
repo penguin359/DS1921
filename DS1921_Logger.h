@@ -12,6 +12,8 @@ typedef enum {
 	WAIT_SENSOR_STATE,
 	READ_SENSOR_STATE,
 	COMPLETED_SENSOR_STATE,
+	ERROR_SENSOR_STATE,
+	XBEE_SEND_STATE,
 } sensorState_t;
 
 #define ALARM_SENSOR_FLAG	0x01
@@ -22,6 +24,8 @@ typedef struct {
 	sensorState_t state;
 	sensorFlags_t flags;
 	unsigned long waitTime;
+	uint32_t readingTime;
+	uint8_t frameId;
 	union {
 		uint8_t data8[4];
 		uint16_t data16[2];

@@ -18,7 +18,7 @@
 
 //#define DEBUG_XBEE
 #define DEBUG_SENSOR
-#define TIMING_DEBUG
+//#define TIMING_DEBUG
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
@@ -650,22 +650,8 @@ sensor_t sensors[32];
 
 sensorState_t readAnalogSensor(sensor_t *sensor)
 {
-	const uint8_t sensorPin[] = {
-		A0,
-		A1,
-		A2,
-		A3,
-#ifdef CORE_TEENSY
-		A4,
-		A5,
-#else
-		A6,
-		A7,
-#endif
-	};
-
 	if(sensor->type != ANALOG_SENSOR_TYPE)
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 
 	long val = analogRead(sensor->addr);
 	sensor->data16[0] = val * AREF_MV * 16 / 1023 / 10 + (CELSIUS_TO_KELVIN << 4) - (50 << 4);
@@ -696,39 +682,108 @@ void analogSensorInit(void)
 	};
 
 	for(int8_t i = sizeof(sensorPin)/sizeof(sensorPin[0])-1; i >= 0; i--) {
+		uint8_t addr = sensorPin[i];
+		pinMode(addr, INPUT);
+		digitalWrite(addr, LOW);
+		uint16_t val = analogRead(addr);
+		if(val < 5)
+			continue;
 		sensor_t *sensor = &sensors[i+ANALOG_BASE_IDX];
 		sensor->type = ANALOG_SENSOR_TYPE;
-		sensor->addr = sensorPin[i];
+		sensor->addr = addr;
 	}
 }
 
 
 /* LM75 Sensor support */
 
-#define LM75_BASE_IDX		8
-#define LM75_NUM_SENSORS	8
-#define LM75_BASE_ADDR		0x48
-//#define LM75_MAX_ADDR		LM75_BASE_ADDR + LM75_NUM_SENSORS
+#define LM75_BASE_IDX			8
+#define LM75_NUM_SENSORS		8
+#define LM75_BASE_ADDR			0x48
+
+#define LM75_TEMP_REGISTER		0
+#define LM75_CONFIG_REGISTER		1
+#define LM75_THYST_REGISTER		2
+#define LM75_TSET_REGISTER		3
+
+#define LM75_CONFIG_ONE_SHOT		0x80
+
+#define LM75_CONFIG_9BIT_RESOLUTION	0x00
+#define LM75_CONFIG_10BIT_RESOLUTION	0x20
+#define LM75_CONFIG_11BIT_RESOLUTION	0x40
+#define LM75_CONFIG_12BIT_RESOLUTION	0x60
+#define LM75_CONFIG_RESOLUTION_MASK	0x60
+
+#define LM75_CONFIG_1_FAULT_QUEUE	0x00
+#define LM75_CONFIG_2_FAULT_QUEUE	0x08
+#define LM75_CONFIG_4_FAULT_QUEUE	0x10
+#define LM75_CONFIG_6_FAULT_QUEUE	0x18
+#define LM75_CONFIG_FAULT_QUEUE_MASK	0x18
+
+#define LM75_CONFIG_ALERT_ACTIVE_HIGH	0x04
+#define LM75_CONFIG_ALERT_INTERRUPT	0x02
+#define LM75_CONFIG_SHUTDOWN		0x01
 
 sensorState_t readLM75Sensor(sensor_t *sensor)
 {
-	if(sensor->type != LM75_SENSOR_TYPE)
-		return COMPLETED_SENSOR_STATE;
-
-	Wire.beginTransmission(sensor->addr);
-	Wire.write((uint8_t)0U);
-	Wire.endTransmission();
-	Wire.requestFrom(sensor->addr, (uint8_t)2);
-	uint16_t val = Wire.read() << 8;
-	val |= Wire.read();
-	val >>= 4;
-	sensor->data16[0] = val + (CELSIUS_TO_KELVIN << 4);
+	uint8_t addr = sensor->addr;
+	uint8_t config = 0;
+	uint8_t val;
 #ifdef DEBUG_SENSOR
-	temp_t temp = (temp_t)val * 0.0625f;
-	testDebug.print("I2C Val: ");
-	testDebug.println(val, DEC);
-	printTemp(temp);
+	temp_t temp;
 #endif
+
+	if(sensor->type != LM75_SENSOR_TYPE)
+		return ERROR_SENSOR_STATE;
+
+	switch(sensor->state) {
+	case START_SENSOR_STATE:
+		Wire.beginTransmission(addr);
+		Wire.write(LM75_CONFIG_REGISTER);
+		Wire.endTransmission();
+		Wire.requestFrom(addr, (uint8_t)1);
+		config = Wire.read();
+#ifdef DEBUG_SENSOR
+		testDebug.print("LM75 Start Conf: 0x");
+		testDebug.println(config, HEX);
+#endif
+		config |= LM75_CONFIG_ONE_SHOT;
+		Wire.beginTransmission(addr);
+		Wire.write(LM75_CONFIG_REGISTER);
+		Wire.write(config);
+		Wire.endTransmission();
+		sensor->waitTime = millis() + 200UL;
+		return WAIT_SENSOR_STATE;
+		break;
+
+	case READ_SENSOR_STATE:
+		Wire.requestFrom(addr, (uint8_t)1);
+		config = Wire.read();
+#ifdef DEBUG_SENSOR
+		testDebug.print("LM75 Read Conf: 0x");
+		testDebug.println(config, HEX);
+#endif
+		if(config & LM75_CONFIG_ONE_SHOT)
+			return READ_SENSOR_STATE;
+		Wire.beginTransmission(addr);
+		Wire.write(LM75_TEMP_REGISTER);
+		Wire.endTransmission();
+		Wire.requestFrom(addr, (uint8_t)2);
+		val = Wire.read() << 8;
+		val |= Wire.read();
+		val >>= 4;
+		sensor->data16[0] = val + (CELSIUS_TO_KELVIN << 4);
+#ifdef DEBUG_SENSOR
+		temp = (temp_t)val * 0.0625f;
+		testDebug.print("I2C Val: ");
+		testDebug.println(val, DEC);
+		printTemp(temp);
+		break;
+#endif
+
+	default:
+		break;
+	}
 
 	return COMPLETED_SENSOR_STATE;
 }
@@ -736,9 +791,15 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 void lm75SensorInit(void)
 {
 	for(int8_t i = LM75_NUM_SENSORS-1; i >= 0; i--) {
+		uint8_t addr = LM75_BASE_ADDR + i;
+		Wire.beginTransmission(addr);
+		Wire.write(LM75_CONFIG_REGISTER);
+		Wire.write(LM75_CONFIG_12BIT_RESOLUTION | LM75_CONFIG_SHUTDOWN);
+		if(Wire.endTransmission() != 0)
+			continue;
 		sensor_t *sensor = &sensors[i+LM75_BASE_IDX];
 		sensor->type = LM75_SENSOR_TYPE;
-		sensor->addr = LM75_BASE_ADDR + i;
+		sensor->addr = addr;
 	}
 }
 
@@ -759,7 +820,7 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 	long humidityVal, tempVal;
 
 	if(sensor->type != HIH6130_SENSOR_TYPE)
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 
 	switch(sensor->state) {
 	case START_SENSOR_STATE:
@@ -785,7 +846,7 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 		break;
 
 	default:
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 		break;
 	}
 	long status = humidityVal & HIH6130_STATUS_MASK;
@@ -824,17 +885,17 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 
 	case HIH6130_COMMAND_MODE_STATUS:
 		testDebug.println("Command Mode Error");
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 		break;
 
 	case HIH6130_DIAGNOSTIC_STATUS:
 		testDebug.println("Diagnostic Error");
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 		break;
 
 	default:
 		testDebug.println("Unknown Error");
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 		break;
 	}
 
@@ -844,9 +905,13 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 void hih6130SensorInit(void)
 {
 	for(int8_t i = HIH6130_NUM_SENSORS-1; i >= 0; i--) {
+		uint8_t addr = HIH6130_BASE_ADDR + i;
+		Wire.beginTransmission(addr);
+		if(Wire.endTransmission() != 0)
+			continue;
 		sensor_t *sensor = &sensors[i+HIH6130_BASE_IDX];
 		sensor->type = HIH6130_SENSOR_TYPE;
-		sensor->addr = HIH6130_BASE_ADDR + i;
+		sensor->addr = addr;
 	}
 }
 
@@ -870,7 +935,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 	temp_t temp = 0;
 
 	if(sensor->type != ONE_WIRE_SENSOR_TYPE)
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 
 	switch(sensor->state) {
 	case START_SENSOR_STATE:
@@ -885,7 +950,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 
 		if (OneWire::crc8(addr, 7) != addr[7]) {
 			debug.println("CRC is not valid!");
-			return COMPLETED_SENSOR_STATE;
+			return ERROR_SENSOR_STATE;
 		}
 		debug.println();
 
@@ -912,7 +977,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 #if 0
 			debug.println("Device is not a DS18x20 family device.");
 #endif
-			return COMPLETED_SENSOR_STATE;
+			return ERROR_SENSOR_STATE;
 		}
 
 		ds.reset();
@@ -922,12 +987,14 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 		return WAIT_SENSOR_STATE;
 		break;
 
-	case WAIT_SENSOR_STATE:
+	case READ_SENSOR_STATE:
 
+#if 0
 		//delay(1000);     // maybe 750ms is enough, maybe not
 		// we might do a ds.depower() here, but the reset will take care of it.
 		if(millis() < sensor->waitTime)
 			return WAIT_SENSOR_STATE;
+#endif
 
 		present = ds.reset();
 		ds.select(addr);
@@ -1056,11 +1123,11 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 		break;
 
 	default:
-		return COMPLETED_SENSOR_STATE;
+		return ERROR_SENSOR_STATE;
 		break;
 	}
 
-#ifdef SENSOR_DEBUG
+#ifdef DEBUG_SENSOR
 	printTemp(temp);
 #endif
 	return COMPLETED_SENSOR_STATE;
@@ -1103,7 +1170,7 @@ sensorState_t readSensor(sensor_t *sensor)
 		return readOneWireSensor(sensor);
 #endif
 
-	return COMPLETED_SENSOR_STATE;
+	return ERROR_SENSOR_STATE;
 }
 
 void processSensor(sensor_t *sensor)
@@ -1116,7 +1183,10 @@ void processSensor(sensor_t *sensor)
 				return;
 			sensor->state = READ_SENSOR_STATE;
 		}
-		sensor->state = readSensor(sensor);
+		state = readSensor(sensor);
+		if(state == COMPLETED_SENSOR_STATE)
+			sensor->readingTime = clock;
+		sensor->state = state;
 		return;
 	}
 }
@@ -1482,6 +1552,7 @@ void loop(void)
 		switch(sensorNum) {
 		case 0 + ANALOG_BASE_IDX:
 		case 1 + ANALOG_BASE_IDX:
+		case 2 + ANALOG_BASE_IDX:
 		case 7 + LM75_BASE_IDX:
 		case 0 + HIH6130_BASE_IDX:
 #ifdef ONE_WIRE_SENSORS
@@ -1494,9 +1565,9 @@ void loop(void)
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
-			readSensor(sensor);
+			processSensor(sensor);
 			printSensor(sensor);
-			if(sensor->state == COMPLETED_SENSOR_STATE) {
+			if(sensor->state >= COMPLETED_SENSOR_STATE) {
 				sensorNum++;
 				sensor = &sensors[sensorNum];
 				sensor->state = START_SENSOR_STATE;
@@ -1527,6 +1598,6 @@ void loop(void)
 #ifdef TIMING_DEBUG
 	testDebug.print("Main loop took ");
 	testDebug.print(millis() - mainLoopStartTime, DEC);
-	testDebug.println(" ms\n");
+	testDebug.println(" ms");
 #endif
 }
