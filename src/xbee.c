@@ -319,15 +319,18 @@ int processApi(unsigned char *buf, int len)
 				    (struct querySensorResponse *)&buf[12];
 				int num = sensor->sensor;
 				int type = sensor->type;
+				time_t time = sensor->time;
 				int val = sensor->data16[0];
 				int val2 = sensor->data16[1];
 
 				node = findNodeByAddr64((macAddr64_t *)&buf[1]);
 				if(node != NULL) {
-					if(num != 16)
-						printf("Sensor(%d) on %s is %.2f°F @ %u\n", num, node->identifier, (double)(val - (273 << 4)) * 0.0625 * 9./5. + 32., (unsigned int)*(uint32_t *)&buf[12+3]);
+					if(type == 3)
+						printf("Sensor(%d) on %s is %.2f°F and %.2f%% humidity @ %lu\n", num, node->identifier, ((double)val / (double)(1 << 14) * 165. - 40.) * 9./5. + 32., (double)val2 / (double)(1 << 14) * 100., time);
+					else if(type == 6)
+						printf("Sensor(%d) on %s is at %.2f%% of light @ %lu\n", num, node->identifier, (double)val / (double)(1 << 15) * 100., time);
 					else
-						printf("Sensor(%d) on %s is %.2f°F and %.2f%% humidity @ %u\n", num, node->identifier, ((double)val / (double)(1 << 14) * 165. - 40.) * 9./5. + 32., (double)val2 / (double)(1 << 14) * 100., (unsigned int)*(uint32_t *)&buf[12+3]);
+						printf("Sensor(%d) on %s is %.2f°F @ %lu\n", num, node->identifier, (double)(val - (273 << 4)) * 0.0625 * 9./5. + 32., time);
 				}
 				//temp = (double)val / (double)(1 << 14) * 165. - 40.;
 			}

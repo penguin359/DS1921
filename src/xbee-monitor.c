@@ -114,6 +114,8 @@ int main(int argc, char **argv)
 				if(type == 0+2)
 					type = 1+2;
 				else if(type == 1+2)
+					type = 2+2;
+				else if(type == 2+2)
 					type = 15+2;
 				else if(type == 15+2)
 					type = 16+2;
