@@ -4,8 +4,6 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#include "DS1921_Logger.h"
-
 /* OneWire DS18S20, DS18B20, DS1822 Temperature Example
  *
  * http://www.pjrc.com/teensy/td_libs_OneWire.html
@@ -18,9 +16,11 @@
 //#define ARDUINO_UNO
 
 //#define DEBUG_XBEE
-//#define DEBUG_SENSOR
-//#define TIMING_DEBUG
-#define USE_ZIGBEE_DEBUG
+#define DEBUG_SENSOR
+#define DEBUG_TIMING
+//#define USE_ZIGBEE_DEBUG
+
+#include "DS1921_Logger.h"
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
@@ -1290,6 +1290,10 @@ void processSensor(sensor_t *sensor)
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, NULL, 0);
 	sensorState_t state = sensor->state;
 
+#ifdef DEBUG_TIMING
+	if(state == START_SENSOR_STATE)
+		sensor->startTime = millis();
+#endif
 	if(state < COMPLETED_SENSOR_STATE) {
 		if(state == WAIT_SENSOR_STATE) {
 			if(millis() < sensor->waitTime)
@@ -1329,6 +1333,11 @@ void processSensor(sensor_t *sensor)
 	case ERROR_SENSOR_STATE:
 	case XBEE_ACK_SENSOR_STATE:
 	case STOP_SENSOR_STATE:
+#ifdef DEBUG_TIMING
+		debug.print("Took ");
+		debug.print(millis() - sensor->startTime, DEC);
+		debug.println(" ms\n");
+#endif
 		/* nothing more to do once sensor data has been acknowledged */
 		sensor->state = STOP_SENSOR_STATE;
 		break;
@@ -1679,7 +1688,9 @@ void setup(void)
 
 void loop(void)
 {
-#ifdef TIMING_DEBUG
+#ifdef DEBUG_TIMING
+	static unsigned long lastMainLoopTime = 0;
+	static unsigned long maxMainLoopTime = 0;
 	unsigned long mainLoopStartTime = millis();
 #endif
 	static int sensorNum = 0;
@@ -1717,10 +1728,6 @@ void loop(void)
 	xbeeHandler();
 
 	if(currentMillis - sensorTick >= 5000UL) {
-#ifdef TIMING_DEBUG
-		unsigned long startTime;
-#endif
-
 		sensor = &sensors[sensorNum];
 		switch(sensorNum) {
 		case 0 + ANALOG_BASE_IDX:
@@ -1736,9 +1743,6 @@ void loop(void)
 #endif
 			//debug.print("Sensor: ");
 			//debug.println(sensorNum);
-#ifdef TIMING_DEBUG
-			startTime = millis();
-#endif
 			processSensor(sensor);
 			//printSensor(sensor);
 			if(sensor->state >= STOP_SENSOR_STATE) {
@@ -1749,11 +1753,6 @@ void loop(void)
 			} else {
 				//debug.println("Waiting...");
 			}
-#ifdef TIMING_DEBUG
-			debug.print("Took ");
-			debug.print(millis() - startTime, DEC);
-			debug.println(" ms\n");
-#endif
 			break;
 
 		default:
@@ -1770,9 +1769,16 @@ void loop(void)
 		}
 	}
 
-#ifdef TIMING_DEBUG
-	debug.print("Main loop took ");
-	debug.print(millis() - mainLoopStartTime, DEC);
-	debug.println(" ms");
+#ifdef DEBUG_TIMING
+	currentMillis = millis();
+	if(maxMainLoopTime < currentMillis - mainLoopStartTime)
+		maxMainLoopTime = currentMillis - mainLoopStartTime;
+	if(currentMillis - lastMainLoopTime >= 10000UL) {
+		debug.print("Main loop took ");
+		debug.print(maxMainLoopTime, DEC);
+		debug.println(" ms max");
+		maxMainLoopTime = 0;
+		lastMainLoopTime = millis();
+	}
 #endif
 }

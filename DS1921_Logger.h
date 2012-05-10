@@ -27,6 +27,9 @@ typedef struct {
 	sensorType_t type;
 	sensorState_t state;
 	sensorFlags_t flags;
+#ifdef DEBUG_TIMING
+	unsigned long startTime;
+#endif
 	unsigned long waitTime;
 	uint32_t readingTime;
 	uint8_t frameId;
