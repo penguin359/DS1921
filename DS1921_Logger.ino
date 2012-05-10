@@ -18,8 +18,9 @@
 //#define ARDUINO_UNO
 
 //#define DEBUG_XBEE
-#define DEBUG_SENSOR
+//#define DEBUG_SENSOR
 //#define TIMING_DEBUG
+#define USE_ZIGBEE_DEBUG
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
@@ -133,10 +134,6 @@ SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
 #endif
 
 
-#ifdef ONE_WIRE_SENSORS
-OneWire ds(0);
-#endif
-
 class Dummy : public Stream {
     public:
 	virtual int available(void) { return 0; }
@@ -146,17 +143,6 @@ class Dummy : public Stream {
 	virtual size_t write(uint8_t val) { return 0; }
 };
 
-#ifdef DEBUG_XBEE
-HardwareSerial uart = HardwareSerial();
-#endif
-//#define debug Uart
-#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
-#define debug Serial
-#else
-Dummy Dummy;
-#define debug Dummy
-#endif
-
 #ifndef DEBUG_XBEE
 XBee xbee = XBee();
 //XBeeResponse response = XBeeResponse();
@@ -164,29 +150,14 @@ ZBRxResponse rx = ZBRxResponse();
 ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
-uint8_t payload[] = { 0x04, 'H', 'i' };
+//uint8_t payload[] = { 0x04, 'H', 'i' };
 uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
-//uint8_t sensorPayload[] = { 'S', 'e', 'n', 's', 'o', 'r', '-' };
 uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0 };
 #endif
 
 uint32_t clock;
-//elapsedMillis clockTick;
 unsigned long clockTick;
 unsigned long sensorTick;
-
-//#define D0 5
-//#define D1 6
-
-#if 0
-void debugPrint(char *str)
-{
-	ZBTxRequest zbTx = ZBTxRequest(coordinator, str, strlen(str));
-	//zbTx.setPayload(payload);
-	//zbTx.setPayloadLength(sizeof(payload));
-	xbee.send(zbTx);
-}
-#endif
 
 class SensorDebug : public Stream {
     private:
@@ -241,11 +212,36 @@ class SensorDebug : public Stream {
 	}
 };
 
-#ifdef CORE_TEENSY
-#define testDebug Serial
-#else
-SensorDebug testDebug = SensorDebug();
+#ifdef DEBUG_XBEE
+HardwareSerial uart = HardwareSerial();
 #endif
+//#define debug Uart
+#ifdef USE_ZIGBEE_DEBUG
+SensorDebug debug = SensorDebug();
+#else
+#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
+#define debug Serial
+#else
+#define debug dummy
+#define NEED_DUMMY_STREAM
+#endif
+#endif
+
+#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
+#define localDebug Serial
+#else
+#define localDebug dummy
+#define NEED_DUMMY_STREAM
+#endif
+
+#ifdef NEED_DUMMY_STREAM
+Dummy dummy = Dummy();
+#undef NEED_DUMMY_STREAM
+#endif
+
+//#define serial Serial
+#define serial localDebug
+
 
 
 uint8_t frameId = -1;
@@ -260,6 +256,8 @@ uint8_t getFrameId(void)
 }
 
 #ifdef ONE_WIRE_SENSORS
+OneWire ds(0);
+
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
 {
 	ds.reset();
@@ -401,10 +399,10 @@ void parseSerial(char c)
 
 	int i;
 
-	debug.print("S=");
-	debug.print(state, DEC);
-	debug.print(": ");
-	debug.println(c);
+	serial.print("S=");
+	serial.print(state, DEC);
+	serial.print(": ");
+	serial.println(c);
 	switch(state) {
 	case HOME_STATE:
 		if(c == 'D') {
@@ -425,36 +423,36 @@ void parseSerial(char c)
 
 	case D_STATE:
 		if(c == '\n') {
-			debug.println("STARTLOG");
+			serial.println("STARTLOG");
 			readDS1921(addr, DS1921_MISSION_TIMESTAMP, rtcBuf, 5);
-			debug.print("Time=20");
-			debug.print(rtcBuf[4], HEX);
-			debug.print("-");
-			debug.print(rtcBuf[3], HEX);
-			debug.print("-");
-			debug.print(rtcBuf[2], HEX);
-			debug.print("T");
-			debug.print(rtcBuf[1], HEX);
-			debug.print(":");
-			debug.print(rtcBuf[0], HEX);
-			debug.println(":00Z");
+			serial.print("Time=20");
+			serial.print(rtcBuf[4], HEX);
+			serial.print("-");
+			serial.print(rtcBuf[3], HEX);
+			serial.print("-");
+			serial.print(rtcBuf[2], HEX);
+			serial.print("T");
+			serial.print(rtcBuf[1], HEX);
+			serial.print(":");
+			serial.print(rtcBuf[0], HEX);
+			serial.println(":00Z");
 
 			long count = 0;
 			byte countBytes[3];
 			readDS1921(addr, DS1921_MISSION_SAMPLES_COUNTER, countBytes, sizeof(countBytes));
 			count = (long)countBytes[0] << 0 | (long)countBytes[1] << 8 | (long)countBytes[2] << 16;
-			debug.print("Count=");
-			debug.println(count, DEC);
+			serial.print("Count=");
+			serial.println(count, DEC);
 
 			readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
-			debug.println("LOG");
+			serial.println("LOG");
 			if(count > 2048)
 				count = 2048;
 			while(count-- > 0) {
-				debug.print("    ");
-				debug.println(ds.read(), DEC);
+				serial.print("    ");
+				serial.println(ds.read(), DEC);
 			}
-			debug.println("ENDLOG");
+			serial.println("ENDLOG");
 			state = HOME_STATE;
 			break;
 		}
@@ -471,8 +469,8 @@ void parseSerial(char c)
 		}
 
 		clock = val;
-		debug.print("Time set to ");
-		debug.println(clock, DEC);
+		serial.print("Time set to ");
+		serial.println(clock, DEC);
 		state = HOME_STATE;
 		break;
 
@@ -496,111 +494,111 @@ void parseSerial(char c)
 
 	case RTC_STATE:
 		if(c == '\n') {
-			debug.println("rtc time is ...");
+			serial.println("rtc time is ...");
 			readDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
-			debug.print("20");
-			debug.print((unsigned char)rtcBuf[6], HEX);
-			debug.print("-");
-			debug.print((unsigned char)rtcBuf[5] & ~0x80, HEX);
-			debug.print("-");
-			debug.print((unsigned char)rtcBuf[4], HEX);
-			debug.print("T");
-			debug.print((unsigned char)rtcBuf[2], HEX);
-			debug.print(":");
-			debug.print((unsigned char)rtcBuf[1], HEX);
-			debug.print(":");
-			debug.print((unsigned char)rtcBuf[0], HEX);
-			debug.println("Z");
+			serial.print("20");
+			serial.print((unsigned char)rtcBuf[6], HEX);
+			serial.print("-");
+			serial.print((unsigned char)rtcBuf[5] & ~0x80, HEX);
+			serial.print("-");
+			serial.print((unsigned char)rtcBuf[4], HEX);
+			serial.print("T");
+			serial.print((unsigned char)rtcBuf[2], HEX);
+			serial.print(":");
+			serial.print((unsigned char)rtcBuf[1], HEX);
+			serial.print(":");
+			serial.print((unsigned char)rtcBuf[0], HEX);
+			serial.println("Z");
 			state = HOME_STATE;
 			break;
 		} else {
 			memset(rtcBuf, 0, sizeof(rtcBuf));
 			/* discard 2 */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard 0 */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[6] = (c & ~0x30) << 4;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[6] |= (c & ~0x30);
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard - */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[5] = (c & ~0x30) << 4;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[5] |= (c & ~0x30);
 			rtcBuf[5] |= 0x80;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard - */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[4] = (c & ~0x30) << 4;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[4] |= (c & ~0x30);
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard T */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[2] = (c & ~0x30) << 4;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[2] |= (c & ~0x30);
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard : */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[1] = (c & ~0x30) << 4;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[1] |= (c & ~0x30);
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard : */
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[0] = (c & ~0x30) << 4;
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			rtcBuf[0] |= (c & ~0x30);
-			while(!debug.available())
+			while(!serial.available())
 				;
-			c = debug.read();
+			c = serial.read();
 			/* discard '\n' */
 			rtcBuf[3] = 1; /* day of week (1-7) */
-			debug.print("  Set RTC = 20");
+			serial.print("  Set RTC = 20");
 			for(i = 6; i >= 0; i--) {
-				debug.print(rtcBuf[i], HEX);
-				debug.print(" ");
+				serial.print(rtcBuf[i], HEX);
+				serial.print(" ");
 			}
-			debug.println("");
-			debug.println("  Updating RTC...");
+			serial.println("");
+			serial.println("  Updating RTC...");
 			writeDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
 		}
 
@@ -633,7 +631,7 @@ void printTemp(temp_t celsius)
 	float fahrenheit;
 
 	if(celsius < 8. || celsius > 58.) {
-		testDebug.println("ALARM!");
+		debug.println("ALARM!");
 		alarm = 1;
 #ifdef LED_NOTIFICATION
 		ledOn();
@@ -642,14 +640,14 @@ void printTemp(temp_t celsius)
 #endif
 	}
 	fahrenheit = celsius * 1.8 + 32.0;
-	//testDebug.print("  ATemperature = ");
-	testDebug.print("  T=");
-	testDebug.print(celsius);
-	//testDebug.print(" Celsius, ");
-	testDebug.print("C, ");
-	testDebug.print(fahrenheit);
-	//testDebug.println(" Fahrenheit");
-	testDebug.println("F");
+	//debug.print("  ATemperature = ");
+	debug.print("  T=");
+	debug.print(celsius);
+	//debug.print(" Celsius, ");
+	debug.print("C, ");
+	debug.print(fahrenheit);
+	//debug.println(" Fahrenheit");
+	debug.println("F");
 }
 
 
@@ -677,12 +675,12 @@ sensorState_t readAnalogSensor(sensor_t *sensor)
 #ifdef DEBUG_SENSOR
 	printSensor(sensor);
 	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
-	testDebug.print("ADC Val: ");
-	testDebug.println(val, DEC);
+	debug.print("ADC Val: ");
+	debug.println(val, DEC);
 	if(sensor->type == LIGHT_SENSOR_TYPE) {
-		testDebug.print("  L=");
-		testDebug.print((double)val * 100. / 1023.);
-		testDebug.println("%");
+		debug.print("  L=");
+		debug.print((double)val * 100. / 1023.);
+		debug.println("%");
 	} else {
 		printTemp(temp);
 	}
@@ -772,8 +770,8 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 		Wire.requestFrom(addr, (uint8_t)1);
 		config = Wire.read();
 #ifdef DEBUG_SENSOR
-		testDebug.print("LM75 Start Conf: 0x");
-		testDebug.println(config, HEX);
+		debug.print("LM75 Start Conf: 0x");
+		debug.println(config, HEX);
 #endif
 		config |= LM75_CONFIG_ONE_SHOT;
 		Wire.beginTransmission(addr);
@@ -788,8 +786,8 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 		Wire.requestFrom(addr, (uint8_t)1);
 		config = Wire.read();
 #ifdef DEBUG_SENSOR
-		testDebug.print("LM75 Read Conf: 0x");
-		testDebug.println(config, HEX);
+		debug.print("LM75 Read Conf: 0x");
+		debug.println(config, HEX);
 #endif
 		if(config & LM75_CONFIG_ONE_SHOT)
 			return READ_SENSOR_STATE;
@@ -804,8 +802,8 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 #ifdef DEBUG_SENSOR
 		printSensor(sensor);
 		temp = (temp_t)val * 0.0625f;
-		testDebug.print("I2C Val: ");
-		testDebug.println(val, DEC);
+		debug.print("I2C Val: ");
+		debug.println(val, DEC);
 		printTemp(temp);
 		break;
 #endif
@@ -866,12 +864,12 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 		humidityVal |= Wire.read();
 		tempVal = Wire.read() << 8;
 		tempVal |= Wire.read();
-		//testDebug.print("H:");
-		//testDebug.print(humidityVal, HEX);
-		//testDebug.print(",");
-		//testDebug.print(humidityVal & HIH6130_STATUS_MASK, HEX);
-		//testDebug.print(",");
-		//testDebug.println(HIH6130_STALE_STATUS, HEX);
+		//debug.print("H:");
+		//debug.print(humidityVal, HEX);
+		//debug.print(",");
+		//debug.print(humidityVal & HIH6130_STATUS_MASK, HEX);
+		//debug.print(",");
+		//debug.println(HIH6130_STALE_STATUS, HEX);
 		if((humidityVal & HIH6130_STATUS_MASK) == HIH6130_STALE_STATUS)
 			return READ_SENSOR_STATE;
 		break;
@@ -881,23 +879,23 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 		break;
 	}
 	long status = humidityVal & HIH6130_STATUS_MASK;
-	//testDebug.print("HIH Humidity: ");
-	//testDebug.print(humidityVal, DEC);
-	//testDebug.print(", HIH Humidity: ");
-	//testDebug.print(humidityVal, DEC);
-	//testDebug.print(", HIH loops: ");
-	//testDebug.println(i, DEC);
+	//debug.print("HIH Humidity: ");
+	//debug.print(humidityVal, DEC);
+	//debug.print(", HIH Humidity: ");
+	//debug.print(humidityVal, DEC);
+	//debug.print(", HIH loops: ");
+	//debug.println(i, DEC);
 	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
 	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 #ifdef DEBUG_SENSOR
 	printSensor(sensor);
-	testDebug.print("HIH Humidity: ");
-	testDebug.print(humidityVal, DEC);
-	testDebug.print(", Temp: ");
-	testDebug.println(tempVal, DEC);
-	testDebug.print("  Humidity: ");
-	testDebug.print(humidity);
-	testDebug.print("%, Temperature: ");
+	debug.print("HIH Humidity: ");
+	debug.print(humidityVal, DEC);
+	debug.print(", Temp: ");
+	debug.println(tempVal, DEC);
+	debug.print("  Humidity: ");
+	debug.print(humidity);
+	debug.print("%, Temperature: ");
 #endif
 	tempVal >>= 2;
 	sensor->data16[0] = tempVal;
@@ -906,8 +904,8 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 	//temp_t temp = (temp_t)tempVal / (float)(2^14 - 1) * (125.f - -40.f);
 	//temp_t temp = (temp_t)(tempVal & 16383L) / 16383.f * (125.f - -40.f) + -40.f;
 	temp_t temp = (float)tempVal / 16383.f * 165.f - 40.f;
-	testDebug.print(temp * 9.f/5.f + 32.f);
-	testDebug.println("°F");
+	debug.print(temp * 9.f/5.f + 32.f);
+	debug.println("°F");
 	printTemp(temp);
 #endif
 
@@ -916,17 +914,17 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 		break;
 
 	case HIH6130_COMMAND_MODE_STATUS:
-		testDebug.println("Command Mode Error");
+		debug.println("Command Mode Error");
 		return ERROR_SENSOR_STATE;
 		break;
 
 	case HIH6130_DIAGNOSTIC_STATUS:
-		testDebug.println("Diagnostic Error");
+		debug.println("Diagnostic Error");
 		return ERROR_SENSOR_STATE;
 		break;
 
 	default:
-		testDebug.println("Unknown Error");
+		debug.println("Unknown Error");
 		return ERROR_SENSOR_STATE;
 		break;
 	}
@@ -982,8 +980,8 @@ sensorState_t readTCSensor(sensor_t *sensor)
 #ifdef DEBUG_SENSOR
 		printSensor(sensor);
 		temp = (float)(val & ~0x05) * 0.25f;
-		testDebug.print("SPI Val: ");
-		testDebug.println(val, DEC);
+		debug.print("SPI Val: ");
+		debug.println(val, DEC);
 		printTemp(temp);
 #endif
 		if(val & (TC_SIGN_FLAG | TC_OPEN_FLAG | TC_DEVICE_ID_FLAG)) {
@@ -1054,7 +1052,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 #endif
 
 		if (OneWire::crc8(addr, 7) != addr[7]) {
-			debug.println("CRC is not valid!");
+			debug.print("  CRC is not valid!");
 			return ERROR_SENSOR_STATE;
 		}
 		debug.println();
@@ -1247,18 +1245,22 @@ void oneWireSensorInit(void)
 		oneWireSensors[i].addr[0] = 0x00;
 
 	ds.reset_search();
+#ifdef DEBUG_SENSOR
 	debug.println("Scanning 1-Wire...");
+#endif
 	for(i = 0; i < MAX_ONE_WIRE_SENSORS &&
 	    ds.search(oneWireSensors[i].addr); i++) {
 		sensor_t *sensor = &sensors[i+ONE_WIRE_BASE_IDX];
 		sensor->type = ONE_WIRE_SENSOR_TYPE;
 		sensor->addr = i;
+#ifdef DEBUG_SENSOR
 		debug.print("Found ROM =");
 		for(j = 0; j < 8; j++) {
 			debug.write(' ');
 			debug.print(oneWireSensors[i].addr[j], HEX);
 		}
 		debug.println("");
+#endif
 	}
 }
 #endif
@@ -1285,7 +1287,7 @@ sensorState_t readSensor(sensor_t *sensor)
 
 void processSensor(sensor_t *sensor)
 {
-	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
+	ZBTxRequest zbTx = ZBTxRequest(coordinator, NULL, 0);
 	sensorState_t state = sensor->state;
 
 	if(state < COMPLETED_SENSOR_STATE) {
@@ -1344,36 +1346,36 @@ void printSensor(sensor_t *sensor)
 	idx = sensor - sensors;
 	switch(sensor->type) {
 	case ANALOG_SENSOR_TYPE:
-		testDebug.print("Analog(");
+		debug.print("Analog(");
 		idx -= ANALOG_BASE_IDX;
 		break;
 	case LM75_SENSOR_TYPE:
-		testDebug.print("LM75(");
+		debug.print("LM75(");
 		idx -= LM75_BASE_IDX;
 		break;
 	case HIH6130_SENSOR_TYPE:
-		testDebug.print("HIH6130(");
+		debug.print("HIH6130(");
 		idx -= HIH6130_BASE_IDX;
 		break;
 	case TC_SENSOR_TYPE:
-		testDebug.print("TC(");
+		debug.print("TC(");
 		idx -= TC_BASE_IDX;
 		break;
 	case ONE_WIRE_SENSOR_TYPE:
-		testDebug.print("1-Wire(");
+		debug.print("1-Wire(");
 		idx -= ONE_WIRE_BASE_IDX;
 		break;
 	case LIGHT_SENSOR_TYPE:
-		testDebug.print("Light(");
+		debug.print("Light(");
 		idx -= ANALOG_BASE_IDX;
 		break;
 	default:
-		testDebug.print("Unknown(");
+		debug.print("Unknown(");
 		idx -= 0;
 		break;
 	}
-	testDebug.print(idx, DEC);
-	testDebug.print("): ");
+	debug.print(idx, DEC);
+	debug.print("): ");
 }
 
 void sensorInit(void)
@@ -1394,14 +1396,14 @@ void sensorInit(void)
 #endif
 
 #ifdef DEBUG_SENSOR
-	testDebug.println("Found sensors:");
+	debug.println("Found sensors:");
 	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
 		sensor_t *sensor = &sensors[32-i-1];
 		if(sensor->type == NONE_SENSOR_TYPE)
 			continue;
-		testDebug.print("  ");
+		debug.print("  ");
 		printSensor(sensor);
-		testDebug.println(sensor->addr);
+		debug.println(sensor->addr);
 	}
 #endif
 }
@@ -1517,17 +1519,17 @@ void piezoInit(void)
 void xbeeHandler(void)
 {
 #ifndef DEBUG_XBEE
-	ZBTxRequest zbTx = ZBTxRequest(coordinator, payload, sizeof(payload));
+	ZBTxRequest zbTx = ZBTxRequest(coordinator, NULL, 0);
 #endif
 	byte *dataPtr;
 	uint8_t sensor;
 
 #ifdef DEBUG_XBEE
 	if(uart.available()) {
-		debug.print("XB: [");
+		localDebug.print("XB: [");
 		while(uart.available())
-			debug.print(uart.read(), HEX);
-		debug.println("]");
+			localDebug.print(uart.read(), HEX);
+		localDebug.println("]");
 	}
 #else
 	xbee.readPacket();
@@ -1537,17 +1539,17 @@ void xbeeHandler(void)
 		case ZB_RX_RESPONSE:
 			xbee.getResponse().getZBRxResponse(rx);
 			dataPtr = rx.getData();
-			debug.print("ZB RZ [");
+			localDebug.print("ZB RZ [");
 			for(int i = 0; i < rx.getDataLength(); i++) {
 				if(i > 0)
-					debug.print(" ");
-				debug.print(rx.getData()[i], HEX);
+					localDebug.print(" ");
+				localDebug.print(rx.getData()[i], HEX);
 			}
-			debug.print("]");
+			localDebug.print("]");
 			if (rx.getOption() == ZB_PACKET_ACKNOWLEDGED) {
-				debug.print(" (ACK)");
+				localDebug.print(" (ACK)");
 			}
-			debug.println("");
+			localDebug.println("");
 			if(rx.getDataLength() < 1)
 				break;
 			switch(dataPtr[0]) {
@@ -1582,21 +1584,21 @@ void xbeeHandler(void)
 				break;
 
 			default:
-				debug.println("Unknown Data packet.");
+				localDebug.println("Unknown Data packet.");
 				break;
 			}
 			break;
 
 		case ZB_TX_STATUS_RESPONSE:
-			debug.print("ZB TX Status: ");
+			localDebug.print("ZB TX Status: ");
 			xbee.getResponse().getZBTxStatusResponse(txStatus);
 			if(txStatus.getDeliveryStatus() == 0) {
-				debug.print("Success with ");
-				debug.print(txStatus.getTxRetryCount());
-				debug.println(" retries");
+				localDebug.print("Success with ");
+				localDebug.print(txStatus.getTxRetryCount());
+				localDebug.println(" retries");
 			} else {
-				debug.print("Failed with status ");
-				debug.println(txStatus.getDeliveryStatus(), HEX);
+				localDebug.print("Failed with status ");
+				localDebug.println(txStatus.getDeliveryStatus(), HEX);
 			}
 			for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
 				sensor_t *sensor = &sensors[i];
@@ -1604,27 +1606,27 @@ void xbeeHandler(void)
 					sensor->state = XBEE_ACK_SENSOR_STATE;
 #ifdef DEBUG_SENSOR
 					printSensor(sensor);
-					testDebug.println("Sensor ACK");
+					localDebug.println("Sensor ACK");
 #endif
 				}
 			}
 			break;
 
 		case MODEM_STATUS_RESPONSE:
-			debug.println("MODEM");
+			localDebug.println("MODEM");
 			xbee.getResponse().getModemStatusResponse(msr);
 			if(msr.getStatus() == ASSOCIATED)
-				debug.println("ASSOCIATED");
+				localDebug.println("ASSOCIATED");
 			break;
 
 		default:
-			debug.println("Unknown");
+			localDebug.println("Unknown");
 			break;
 		}
 		return;
 	} else if(xbee.getResponse().isError()) {
-		debug.print("XBee Error: ");
-		debug.println(xbee.getResponse().getErrorCode(), DEC);
+		localDebug.print("XBee Error: ");
+		localDebug.println(xbee.getResponse().getErrorCode(), DEC);
 	}
 #endif
 
@@ -1636,7 +1638,7 @@ void xbeeInit(void)
 	uart.begin(9600);
 #else
 #ifdef ARDUINO_UNO
-	debug.begin(9600);
+	localDebug.begin(9600);
 	pinMode(XBEE_RX_PIN, INPUT);
 	pinMode(XBEE_TX_PIN, OUTPUT);
 	xbeeSerial2.begin(9600);
@@ -1664,21 +1666,12 @@ void setup(void)
 
 	/* Initialize Analog sensors */
 	analogReference(DEFAULT);
-	pinMode(A1, INPUT);
-	digitalWrite(A1, LOW);
 
 	/* Initialize Digital sensors */
-//#ifdef CORE_TEENSY
-//	pinMode(D0, INPUT);
-//	pinMode(D1, INPUT);
-//	digitalWrite(D0, HIGH); /* Turn on pull-ups */
-//	digitalWrite(D1, HIGH);
-//#else
 	pinMode(SCL, INPUT);
 	pinMode(SDA, INPUT);
 	digitalWrite(SCL, HIGH); /* Turn on pull-ups */
 	digitalWrite(SDA, HIGH);
-//#endif
 	Wire.begin();
 
 	sensorInit();
@@ -1716,8 +1709,8 @@ void loop(void)
 	}
 
 #ifdef ONE_WIRE_SENSORS
-	if(debug.available()) {
-		parseSerial(debug.read());
+	if(serial.available()) {
+		parseSerial(serial.read());
 	}
 #endif
 
@@ -1741,8 +1734,8 @@ void loop(void)
 		case 1 + ONE_WIRE_BASE_IDX:
 		case 2 + ONE_WIRE_BASE_IDX:
 #endif
-			//testDebug.print("Sensor: ");
-			//testDebug.println(sensorNum);
+			//debug.print("Sensor: ");
+			//debug.println(sensorNum);
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
@@ -1754,12 +1747,12 @@ void loop(void)
 				sensor = &sensors[sensorNum];
 				sensor->state = START_SENSOR_STATE;
 			} else {
-				//testDebug.println("Waiting...");
+				//debug.println("Waiting...");
 			}
 #ifdef TIMING_DEBUG
-			testDebug.print("Took ");
-			testDebug.print(millis() - startTime, DEC);
-			testDebug.println(" ms\n");
+			debug.print("Took ");
+			debug.print(millis() - startTime, DEC);
+			debug.println(" ms\n");
 #endif
 			break;
 
@@ -1778,8 +1771,8 @@ void loop(void)
 	}
 
 #ifdef TIMING_DEBUG
-	testDebug.print("Main loop took ");
-	testDebug.print(millis() - mainLoopStartTime, DEC);
-	testDebug.println(" ms");
+	debug.print("Main loop took ");
+	debug.print(millis() - mainLoopStartTime, DEC);
+	debug.println(" ms");
 #endif
 }
