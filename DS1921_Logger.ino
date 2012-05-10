@@ -1,6 +1,7 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 
+#include <SPI.h>
 #include <Wire.h>
 
 #include "DS1921_Logger.h"
@@ -655,6 +656,8 @@ void printTemp(temp_t celsius)
 
 sensor_t sensors[32];
 
+void printSensor(sensor_t *sensor);
+
 
 /* Analog sensor support */
 
@@ -672,6 +675,7 @@ sensorState_t readAnalogSensor(sensor_t *sensor)
 	else
 		sensor->data16[0] = val * AREF_MV * 16 / 1023 / 10 + (CELSIUS_TO_KELVIN << 4) - (50 << 4);
 #ifdef DEBUG_SENSOR
+	printSensor(sensor);
 	temp_t temp = ((float)val / 1023. * AREF_MV - 500.)/10.;
 	testDebug.print("ADC Val: ");
 	testDebug.println(val, DEC);
@@ -798,6 +802,7 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 		val >>= 4;
 		sensor->data16[0] = val + (CELSIUS_TO_KELVIN << 4);
 #ifdef DEBUG_SENSOR
+		printSensor(sensor);
 		temp = (temp_t)val * 0.0625f;
 		testDebug.print("I2C Val: ");
 		testDebug.println(val, DEC);
@@ -827,6 +832,8 @@ void lm75SensorInit(void)
 	}
 }
 
+
+/* HIH6130 sensor support */
 
 #define HIH6130_BASE_IDX	16
 #define HIH6130_NUM_SENSORS	1
@@ -883,6 +890,7 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
 	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 #ifdef DEBUG_SENSOR
+	printSensor(sensor);
 	testDebug.print("HIH Humidity: ");
 	testDebug.print(humidityVal, DEC);
 	testDebug.print(", Temp: ");
@@ -939,6 +947,79 @@ void hih6130SensorInit(void)
 	}
 }
 
+
+/* TC Sensor support */
+
+#define TC_BASE_IDX			17
+#define TC_NUM_SENSORS			1
+//#define TC_BASE_ADDR			9
+
+//#define tcOn()				digitalWrite(TC_BASE_ADDR, LOW)
+//#define tcOff()				digitalWrite(TC_BASE_ADDR, HIGH)
+
+#define TC_SIGN_FLAG				0x8000
+#define TC_OPEN_FLAG				0x0004
+#define TC_DEVICE_ID_FLAG			0x0002
+#define TC_TRISTATE_FLAG			0x0001
+
+#define TC_VALUE_MASK				0x7ff8
+
+sensorState_t readTCSensor(sensor_t *sensor)
+{
+	uint8_t val;
+#ifdef DEBUG_SENSOR
+	temp_t temp;
+#endif
+
+	if(sensor->type != TC_SENSOR_TYPE)
+		return ERROR_SENSOR_STATE;
+
+	switch(sensor->state) {
+		uint8_t val;
+	case START_SENSOR_STATE:
+		val = SPI.transfer(0xff) << 8;
+		val |= SPI.transfer(0xff);
+#ifdef DEBUG_SENSOR
+		printSensor(sensor);
+		temp = (float)(val & ~0x05) * 0.25f;
+		testDebug.print("SPI Val: ");
+		testDebug.println(val, DEC);
+		printTemp(temp);
+#endif
+		if(val & (TC_SIGN_FLAG | TC_OPEN_FLAG | TC_DEVICE_ID_FLAG)) {
+			sensor->data16[0] = -1;
+			return ERROR_SENSOR_STATE;
+		}
+		sensor->data16[0] = ((val & TC_VALUE_MASK) << 2) + (CELSIUS_TO_KELVIN << 4);
+		break;
+
+	default:
+		return ERROR_SENSOR_STATE;
+		break;
+	}
+
+	return COMPLETED_SENSOR_STATE;
+}
+
+void tcSensorInit(void)
+{
+	SPI.begin();
+	SPI.setBitOrder(MSBFIRST);
+	SPI.setDataMode(SPI_MODE3); /* Idle high, falling-edge */
+	SPI.setClockDivider(SPI_CLOCK_DIV4); /* 4.3MHz max */
+
+	for(int8_t i = TC_NUM_SENSORS-1; i >= 0; i--) {
+		//uint8_t addr = TC_BASE_ADDR + i;
+		if(1 != 0)
+			continue;
+		sensor_t *sensor = &sensors[i+TC_BASE_IDX];
+		sensor->type = TC_SENSOR_TYPE;
+		//sensor->addr = addr;
+	}
+}
+
+
+/* 1-Wire sensor support */
 
 #ifdef ONE_WIRE_SENSORS
 #define ONE_WIRE_BASE_IDX	19
@@ -1152,6 +1233,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 	}
 
 #ifdef DEBUG_SENSOR
+	printSensor(sensor);
 	printTemp(temp);
 #endif
 	return COMPLETED_SENSOR_STATE;
@@ -1181,6 +1263,7 @@ void oneWireSensorInit(void)
 }
 #endif
 
+
 sensorState_t readSensor(sensor_t *sensor)
 {
 	if(sensor->type == ANALOG_SENSOR_TYPE ||
@@ -1190,6 +1273,8 @@ sensorState_t readSensor(sensor_t *sensor)
 		return readLM75Sensor(sensor);
 	else if(sensor->type == HIH6130_SENSOR_TYPE)
 		return readHIH6130Sensor(sensor);
+	else if(sensor->type == TC_SENSOR_TYPE)
+		return readTCSensor(sensor);
 #ifdef ONE_WIRE_SENSORS
 	else if(sensor->type == ONE_WIRE_SENSOR_TYPE)
 		return readOneWireSensor(sensor);
@@ -1270,6 +1355,10 @@ void printSensor(sensor_t *sensor)
 		testDebug.print("HIH6130(");
 		idx -= HIH6130_BASE_IDX;
 		break;
+	case TC_SENSOR_TYPE:
+		testDebug.print("TC(");
+		idx -= TC_BASE_IDX;
+		break;
 	case ONE_WIRE_SENSOR_TYPE:
 		testDebug.print("1-Wire(");
 		idx -= ONE_WIRE_BASE_IDX;
@@ -1299,8 +1388,21 @@ void sensorInit(void)
 	analogSensorInit();
 	lm75SensorInit();
 	hih6130SensorInit();
+	tcSensorInit();
 #ifdef ONE_WIRE_SENSORS
 	oneWireSensorInit();
+#endif
+
+#ifdef DEBUG_SENSOR
+	testDebug.println("Found sensors:");
+	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+		sensor_t *sensor = &sensors[32-i-1];
+		if(sensor->type == NONE_SENSOR_TYPE)
+			continue;
+		testDebug.print("  ");
+		printSensor(sensor);
+		testDebug.println(sensor->addr);
+	}
 #endif
 }
 
@@ -1633,25 +1735,26 @@ void loop(void)
 		case 2 + ANALOG_BASE_IDX:
 		case 7 + LM75_BASE_IDX:
 		case 0 + HIH6130_BASE_IDX:
+		case 0 + TC_BASE_IDX:
 #ifdef ONE_WIRE_SENSORS
 		case 0 + ONE_WIRE_BASE_IDX:
 		case 1 + ONE_WIRE_BASE_IDX:
 		case 2 + ONE_WIRE_BASE_IDX:
 #endif
-			testDebug.print("Sensor: ");
-			testDebug.println(sensorNum);
+			//testDebug.print("Sensor: ");
+			//testDebug.println(sensorNum);
 #ifdef TIMING_DEBUG
 			startTime = millis();
 #endif
 			processSensor(sensor);
-			printSensor(sensor);
+			//printSensor(sensor);
 			if(sensor->state >= STOP_SENSOR_STATE) {
 				processSensor(sensor);
 				sensorNum++;
 				sensor = &sensors[sensorNum];
 				sensor->state = START_SENSOR_STATE;
 			} else {
-				testDebug.println("Waiting...");
+				//testDebug.println("Waiting...");
 			}
 #ifdef TIMING_DEBUG
 			testDebug.print("Took ");
