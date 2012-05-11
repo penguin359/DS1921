@@ -7,6 +7,7 @@
 //#include <fcntl.h>
 //#include <sys/stat.h>
 
+#include "serial.h"
 #include "xbee.h"
 #include "sensor.h"
 
@@ -106,7 +107,8 @@ char *strMacAddr64(macAddr64_t *addr64)
 
 int writeChar(xbee_t *xbee, unsigned char c, int len)
 {
-	return write(xbee->fd, &c, sizeof(c));
+	//return write(xbee->fd, &c, sizeof(c));
+	return writeSerial(xbee->serial, c);
 }
 
 int writeByte(xbee_t *xbee, unsigned char byte, bool escape)
@@ -159,7 +161,8 @@ int sendApiCmd(xbee_t *xbee, int type, bool ack)
 	if(ack) {
 		xbee->buf[xbee->bufLen++] = xbee->frameId;
 		xbee->frameId++;
-		if(xbee->frameId <= 0 || xbee->frameId > 255)
+		//if(xbee->frameId <= 0 || xbee->frameId > 255)
+		if(xbee->frameId == 0)
 			xbee->frameId = 1;
 	} else {
 		xbee->buf[xbee->bufLen++] = 0;
@@ -254,7 +257,8 @@ int sendTxExplicit(xbee_t *xbee, macAddr64_t *addr64, void *data, int len, int s
 	*bufPtr++ = ZB_TX_EXPLICIT_API_CMD; bufLen++;
 	*bufPtr++ = xbee->frameId; bufLen++;
 	xbee->frameId++;
-	if(xbee->frameId <= 0 || xbee->frameId > 255)
+	//if(xbee->frameId <= 0 || xbee->frameId > 255)
+	if(xbee->frameId == 0)
 		xbee->frameId = 1;
 	memcpy(bufPtr, addr64, sizeof(addr64));
 	bufPtr += sizeof(addr64); bufLen += sizeof(addr64);
@@ -420,25 +424,11 @@ int processApi(unsigned char *buf, int len)
 
 int recvApi(xbee_t *xbee)
 {
-	int savedErrno;
-	int count;
-	unsigned char c;
+	int c;
 
-	if((count = read(xbee->fd, &c, 1)) < 0) {
-#ifndef __AVR__
-		savedErrno = errno;
-		if(errno != EAGAIN)
-			perror("read()");
-		errno = savedErrno;
-#endif
+	if((c = readSerial(xbee->serial)) < 0)
 		return -1;
-	}
 	//printf("C:'%c' (0x%02x)\n", c, c);
-
-	if(count == 0) {
-		fprintf(stderr, "End of file\n");
-		exit(0);
-	}
 
 	if(c == API_START) {
 		escapeNextByte = FALSE;

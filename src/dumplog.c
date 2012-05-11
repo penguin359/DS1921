@@ -14,7 +14,7 @@
 int main(int argc, char **argv)
 {
 	char *file;
-	int fd;
+	serial_t *serial;
 	int count;
 	char buf[128];
 	char line[128];
@@ -27,20 +27,16 @@ int main(int argc, char **argv)
 
 	file = argv[1];
 
-	fd = openSerial(file);
+	if((serial = openSerial(file)) == NULL)
+		exit(1);
 
 	time_t lastTime = 0, currentTime;
 	while(1) {
 		time(&currentTime);
 		if(currentTime >= lastTime + 60) {
-			if(write(fd, "D\n", 2) < 2) {
+			if(write(serial->fd, "D\n", 2) < 2) {
 				perror("write()");
-				//if(tcsetattr(fd, TCSANOW, &savedTermios) < 0) {
-				//	perror("tcsetattr()");
-				//	close(fd);
-				//	exit(1);
-				//}
-				close(fd);
+				closeSerial(serial);
 				exit(1);
 			}
 			lastTime = currentTime;
@@ -48,15 +44,15 @@ int main(int argc, char **argv)
 		fd_set rfds, wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		FD_SET(fd, &rfds);
-		if((count = select(fd+1, &rfds, NULL, NULL, NULL)) < 0) {
+		FD_SET(serial->fd, &rfds);
+		if((count = select(serial->fd+1, &rfds, NULL, NULL, NULL)) < 0) {
 			perror("select()");
-			close(fd);
+			closeSerial(serial);
 			exit(1);
 		//} else if(count == 0) {
 		//	printf("Nothing.\n");
 		}
-		if((count = read(fd, buf, sizeof(buf))) > 0) {
+		if((count = read(serial->fd, buf, sizeof(buf))) > 0) {
 			int i = 0;
 			while(linePos < sizeof(line)-1 && i < count) {
 				line[linePos++] = buf[i++];
@@ -67,7 +63,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	close(fd);
+	closeSerial(serial);
 
 	exit(0);
 }

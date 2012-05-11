@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Werror -g
 MAKE ?= make
-SRC_FILES = xbee.h xbee.c sensor.h sensor.c
+SRC_FILES = serial.h xbee.h xbee.c sensor.h sensor.c
 
 all:
 	$(MAKE) -C src all

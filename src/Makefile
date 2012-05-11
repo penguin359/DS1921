@@ -25,13 +25,13 @@ xbee-monitor.o: xbee-monitor.c serial.h xbee.h sensor.h
 xbee-monitor: xbee-monitor.o serial.o xbee.o sensor.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-xbee.o: xbee.c xbee.h
+xbee.o: xbee.c serial.h xbee.h
 	$(CC) $(CFLAGS) -c $<
 
 test-xbee.o: test-xbee.c xbee.h sensor.h
 	$(CC) $(CFLAGS) -c $<
 
-test-xbee: test-xbee.o xbee.o sensor.o
+test-xbee: test-xbee.o serial.o xbee.o sensor.o
 	$(CC) $(CFLAGS) -o $@ $^
 
 test: all

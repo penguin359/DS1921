@@ -26,7 +26,7 @@ int addNewNodeCallback(nodeIdentification_t *node)
 int main(int argc, char **argv)
 {
 	char *file;
-	int fd;
+	serial_t *serial;
 	int count;
 	char buf[128];
 	char line[128];
@@ -44,13 +44,10 @@ int main(int argc, char **argv)
 
 	initNodes();
 
-	fd = openSerial(file);
-	//if((fd = open("testfile", O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
-	//	perror("open");
-	//	exit(1);
-	//}
+	if((serial = openSerial(file)) == NULL)
+		exit(1);
 
-	xbee->fd = fd;
+	xbee->serial = serial;
 	xbee->frameId = 1;
 	xbee->bufLen = 0;
 	xbee->bufMaxLen = sizeof(xbee->buf);
@@ -133,24 +130,19 @@ int main(int argc, char **argv)
 #if 0
 			if(sendAt(xbee, FREE_CHILD_NODES_AT_CMD, 0) < 0) {
 				perror("sendAt()");
-				close(fd);
+				closeSerial(serial);
 				exit(1);
 			}
 			if(sendAt(xbee, "NJ", TRUE) < 0) {
 				perror("sendAt()");
-				close(fd);
+				closeSerial(serial);
 				exit(1);
 			}
 #endif
 #if 0
-			if(write(fd, "D\n", 2) < 2) {
+			if(write(serial->fd, "D\n", 2) < 2) {
 				perror("write()");
-				//if(tcsetattr(fd, TCSANOW, &savedTermios) < 0) {
-				//	perror("tcsetattr()");
-				//	close(fd);
-				//	exit(1);
-				//}
-				close(fd);
+				closeSerial(serial);
 				exit(1);
 			}
 #endif
@@ -159,17 +151,17 @@ int main(int argc, char **argv)
 		fd_set rfds, wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
-		FD_SET(fd, &rfds);
+		FD_SET(serial->fd, &rfds);
 		timeout.tv_sec = 10;
 		timeout.tv_usec = 0;
-		if((count = select(fd+1, &rfds, &wfds, NULL, &timeout)) < 0) {
+		if((count = select(serial->fd+1, &rfds, &wfds, NULL, &timeout)) < 0) {
 			perror("select()");
-			close(fd);
+			closeSerial(serial);
 			exit(1);
 		//} else if(count == 0) {
 		//	printf("Nothing.\n");
 		}
-		if(!FD_ISSET(fd, &rfds)) {
+		if(!FD_ISSET(serial->fd, &rfds)) {
 			//fprintf(stderr, "Odd, fd not set.\n");
 			continue;
 		}
@@ -181,7 +173,7 @@ int main(int argc, char **argv)
 		if(errno == EAGAIN)
 			continue;
 		break;
-		if((count = read(fd, buf, sizeof(buf))) > 0) {
+		if((count = read(serial->fd, buf, sizeof(buf))) > 0) {
 			int i = 0;
 			while(linePos < sizeof(line)-1 && i < count) {
 				line[linePos++] = buf[i++];
@@ -192,7 +184,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	close(fd);
+	closeSerial(serial);
 
 	exit(0);
 }

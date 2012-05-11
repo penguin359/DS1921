@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <time.h>
-//#include <errno.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
@@ -12,35 +11,98 @@
 #include "serial.h"
 
 
-int openSerial(char *file)
+int readSerial(serial_t *serial)
 {
-	struct termios termios, savedTermios;
+	unsigned char c;
+	int count;
+	int savedErrno;
+
+	if((count = read(serial->fd, &c, 1)) < 0) {
+#ifndef __AVR__
+		savedErrno = errno;
+		if(errno != EAGAIN)
+			perror("read()");
+		errno = savedErrno;
+#endif
+		return -1;
+	}
+
+	if(count == 0) {
+		fprintf(stderr, "End of file\n");
+		exit(0);
+	}
+
+	return c;
+}
+
+int writeSerial(serial_t *serial, unsigned char c)
+{
+	return write(serial->fd, &c, sizeof(c));
+}
+
+int closeSerial(serial_t *serial)
+{
+	if(serial->type == CHAR_SERIAL_TYPE)
+		tcsetattr(serial->fd, TCSANOW, &serial->savedTermios);
+	close(serial->fd);
+	free(serial);
+
+	return 0;
+}
+
+serial_t *openSerial(char *file)
+{
+	serial_t *serial;
+	struct termios termios;
 	struct stat stat;
 	int fd;
+	int savedErrno;
+
+	if((serial = malloc(sizeof(*serial))) == NULL) {
+		savedErrno = errno;
+		perror("malloc()");
+		errno = savedErrno;
+		return NULL;
+	}
+	memset(serial, 0UL, sizeof(*serial));
 
 	printf("Opening...\n");
 	if((fd = open(file, O_RDWR | O_NONBLOCK)) < 0) {
+		savedErrno = errno;
 		perror("open()");
-		exit(1);
+		free(serial);
+		errno = savedErrno;
+		return NULL;
 	}
 
 	if(fstat(fd, &stat) < 0) {
+		savedErrno = errno;
 		perror("stat()");
 		close(fd);
-		exit(1);
+		free(serial);
+		errno = savedErrno;
+		return NULL;
 	}
 
+	serial->fd = fd;
+	serial->type = FILE_SERIAL_TYPE;
+
 	if((stat.st_mode & S_IFMT) != S_IFCHR)
-		return fd;
+		return serial;
+
+	serial->type = CHAR_SERIAL_TYPE;
 
 	printf("Setting...\n");
 	if(tcgetattr(fd, &termios) < 0) {
+		savedErrno = errno;
 		perror("tcgetattr()");
 		close(fd);
-		exit(1);
+		free(serial);
+		errno = savedErrno;
+		return NULL;
 	}
 
-	memcpy(&savedTermios, &termios, sizeof(struct termios));
+	memcpy(&serial->savedTermios, &termios, sizeof(struct termios));
 	cfsetspeed(&termios, B9600);
 	termios.c_cflag &= ~(CSIZE | CSTOPB | PARENB | CRTSCTS);
 	termios.c_cflag |= CS8 | CREAD | CLOCAL;
@@ -49,10 +111,14 @@ int openSerial(char *file)
 	termios.c_cc[VTIME] = 0;
 
 	if(tcsetattr(fd, TCSANOW, &termios) < 0) {
+		savedErrno = errno;
 		perror("tcsetattr()");
+		tcsetattr(fd, TCSANOW, &serial->savedTermios);
 		close(fd);
-		exit(1);
+		free(serial);
+		errno = savedErrno;
+		return NULL;
 	}
 
-	return fd;
+	return serial;
 }

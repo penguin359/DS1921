@@ -6,6 +6,7 @@
 #include <fcntl.h>
 //#include <sys/stat.h>
 
+#include "serial.h"
 #include "xbee.h"
 #include "sensor.h"
 
@@ -17,6 +18,7 @@ int addNewNodeCallback(nodeIdentification_t *node)
 
 int main(int argc, char **argv)
 {
+	serial_t serial;
 	xbee_t xbeeDevice;
 	xbee_t *xbee = &xbeeDevice;
 	macAddr64_t addr = { { 1, 2, 3, 4, 5, 6, 7, 8 } };
@@ -27,7 +29,8 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	if((xbee->fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
+	xbee->serial = &serial;
+	if((xbee->serial->fd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)) < 0) {
 		perror("open");
 		exit(1);
 	}
@@ -37,50 +40,50 @@ int main(int argc, char **argv)
 
 	if(sendApi(xbee, "hello", 5) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendApi(xbee, "world", 5) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendApi(xbee, "escape\x13me", 9) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendAt(xbee, "NJ", TRUE) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendAt(xbee, "BD", FALSE) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendTx(xbee, &addr, str, strlen(str)) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendRemoteAt(xbee, &addr, "AO", TRUE) < 0) {
 		fprintf(stderr, "Error sending API packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 	if(sendTime(xbee, &addr) < 0) {
 		fprintf(stderr, "Error sending time packet\n");
-		close(xbee->fd);
+		close(xbee->serial->fd);
 		exit(1);
 	}
 
-	lseek(xbee->fd, 0L, SEEK_SET);
+	lseek(xbee->serial->fd, 0L, SEEK_SET);
 	while(1)
 		recvApi(xbee);
 
-	close(xbee->fd);
+	close(xbee->serial->fd);
 
 	exit(0);
 }

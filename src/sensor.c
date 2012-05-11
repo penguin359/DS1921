@@ -1,5 +1,7 @@
 #include <stdio.h>
+#ifndef __AVR__
 #include <time.h>
+#endif
 
 #include "xbee.h"
 #include "sensor.h"
