@@ -25,7 +25,10 @@ int sendTime(xbee_t *xbee, macAddr64_t *addr64)
 	printf("Sending time to %s\n", strMacAddr64(addr64));
 #endif
 	buf[0] = SEND_TIME_SENSOR_CMD;
+#ifdef __AVR__
+#else
 	time((time_t *)&buf[1]);
+#endif
 	return sendTx(xbee, addr64, buf, sizeof(buf));
 }
 

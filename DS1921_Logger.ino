@@ -16,11 +16,12 @@
 //#define ARDUINO_UNO
 
 //#define DEBUG_XBEE
-#define DEBUG_SENSOR
-#define DEBUG_TIMING
+//#define DEBUG_SENSOR
+//#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
 #include "DS1921_Logger.h"
+#include "sensor.h"
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
@@ -152,7 +153,8 @@ ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
 //uint8_t payload[] = { 0x04, 'H', 'i' };
 uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
-uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0 };
+//uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0 };
+struct querySensorResponse sensorPayload;
 #endif
 
 uint32_t clock;
@@ -1311,11 +1313,12 @@ void processSensor(sensor_t *sensor)
 	case COMPLETED_SENSOR_STATE:
 		frameId = getFrameId();
 		sensor->frameId = frameId;
-		sensorPayload[1] = sensor->id;
-		sensorPayload[2] = sensor->type;
-		*(uint32_t *)&sensorPayload[3] = sensor->readingTime;
-		*(uint32_t *)&sensorPayload[7] = sensor->data32[0];
-		zbTx.setPayload(sensorPayload);
+		sensorPayload.cmd = QUERY_SENSOR_SENSOR_CMD | 0x80;
+		sensorPayload.sensor = sensor->id;
+		sensorPayload.type = sensor->type;
+		sensorPayload.time = sensor->readingTime;
+		sensorPayload.data32[0] = sensor->data32[0];
+		zbTx.setPayload((uint8_t *)&sensorPayload);
 		zbTx.setPayloadLength(sizeof(sensorPayload));
 		zbTx.setFrameId(frameId);
 		xbee.send(zbTx);
@@ -1582,12 +1585,13 @@ void xbeeHandler(void)
 				temp = -1;
 				if(sensor < sizeof(sensors)/sizeof(sensors[0])) {
 					temp = sensors[sensor].data32[0];
-					sensorPayload[2] = sensors[sensor].type;
+					sensorPayload.type = sensors[sensor].type;
 				}
-				sensorPayload[1] = dataPtr[1];
-				*(uint32_t *)&sensorPayload[3] = clock;
-				*(uint32_t *)&sensorPayload[7] = temp;
-				zbTx.setPayload(sensorPayload);
+				sensorPayload.cmd = QUERY_SENSOR_SENSOR_CMD | 0x80;
+				sensorPayload.sensor = dataPtr[1];
+				sensorPayload.time = clock;
+				sensorPayload.data32[0] = temp;
+				zbTx.setPayload((uint8_t *)&sensorPayload);
 				zbTx.setPayloadLength(sizeof(sensorPayload));
 				xbee.send(zbTx);
 				break;

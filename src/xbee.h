@@ -4,7 +4,9 @@
 #include <stdint.h>
 
 
+#ifndef __cplusplus
 typedef int bool;
+#endif
 #define TRUE	1
 #define FALSE	0
 

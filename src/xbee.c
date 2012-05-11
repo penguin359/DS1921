@@ -11,6 +11,11 @@
 #include "sensor.h"
 
 
+#ifdef __AVR__
+typedef uint32_t time_t;
+#endif
+
+
 #define MAX_NODES		10
 node_t nodes[MAX_NODES];
 
@@ -420,10 +425,12 @@ int recvApi(xbee_t *xbee)
 	unsigned char c;
 
 	if((count = read(xbee->fd, &c, 1)) < 0) {
+#ifndef __AVR__
 		savedErrno = errno;
 		if(errno != EAGAIN)
 			perror("read()");
 		errno = savedErrno;
+#endif
 		return -1;
 	}
 	//printf("C:'%c' (0x%02x)\n", c, c);
