@@ -1690,6 +1690,11 @@ void setup(void)
 	sensorInit();
 }
 
+extern "C" int addNewNodeCallback(nodeIdentification_t *node)
+{
+	return 0;
+}
+
 void loop(void)
 {
 #ifdef DEBUG_TIMING

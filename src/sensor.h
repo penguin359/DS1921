@@ -5,6 +5,11 @@
 #include "xbee.h"
 
 
+#ifdef __cplusplus /* If this is a C++ compiler, use C linkage */
+extern "C" {
+#endif
+
+
 #define QUERY_TIME_SENSOR_CMD	1
 #define SEND_TIME_SENSOR_CMD	2
 #define QUERY_SENSOR_SENSOR_CMD	3
@@ -50,4 +55,8 @@ int queryTime(xbee_t *xbee, macAddr64_t *addr64);
 int sendTime(xbee_t *xbee, macAddr64_t *addr64);
 int querySensor(xbee_t *xbee, macAddr64_t *addr64, int sensor);
 
+
+#ifdef __cplusplus /* If this is a C++ compiler, use C linkage */
+}
+#endif
 #endif /* _SENSOR_H_ */

@@ -6,6 +6,11 @@
 #include "serial.h"
 
 
+#ifdef __cplusplus /* If this is a C++ compiler, use C linkage */
+extern "C" {
+#endif
+
+
 #ifndef __cplusplus
 typedef int bool;
 #endif
@@ -114,4 +119,8 @@ int sendRemoteAt(xbee_t *xbee, macAddr64_t *addr64, char *cmd, bool queue);
 int sendTx(xbee_t *xbee, macAddr64_t *addr64, void *data, int len);
 int recvApi(xbee_t *xbee);
 
+
+#ifdef __cplusplus /* If this is a C++ compiler, use C linkage */
+}
+#endif
 #endif /* _XBEE_H_ */
