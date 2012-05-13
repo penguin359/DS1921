@@ -13,13 +13,13 @@
  */
 
 
-//#define ARDUINO_UNO
+#define ARDUINO_UNO
 
 //#define DEBUG_SENSOR
 //#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
-//#define USE_ARDUINO_XBEE
+#define USE_ARDUINO_XBEE
 
 #include "DS1921_Logger.h"
 #include "serial.h"
@@ -733,10 +733,10 @@ void analogSensorInit(void)
 #define LM75_NUM_SENSORS		8
 #define LM75_BASE_ADDR			0x48
 
-#define LM75_TEMP_REGISTER		0
-#define LM75_CONFIG_REGISTER		1
-#define LM75_THYST_REGISTER		2
-#define LM75_TSET_REGISTER		3
+#define LM75_TEMP_REGISTER		(uint8_t)0
+#define LM75_CONFIG_REGISTER		(uint8_t)1
+#define LM75_THYST_REGISTER		(uint8_t)2
+#define LM75_TSET_REGISTER		(uint8_t)3
 
 #define LM75_CONFIG_ONE_SHOT		0x80
 
@@ -1665,8 +1665,8 @@ void xbeeInit(void)
 	localDebug.begin(9600);
 	pinMode(XBEE_RX_PIN, INPUT);
 	pinMode(XBEE_TX_PIN, OUTPUT);
-	xbeeSerial2.begin(9600);
-	xbee.setSerial(xbeeSerial2);
+	//xbeeSerial2.begin(9600);
+	//xbee.setSerial(xbeeSerial2);
 #else
 	xbee.begin(9600);
 #endif
@@ -1675,9 +1675,107 @@ void xbeeInit(void)
 
 
 
+/* WiFly support */
+
+#define WIFLY_RX_PIN				2
+#define WIFLY_TX_PIN				3
+SoftwareSerial wiflyPort = SoftwareSerial(WIFLY_RX_PIN, WIFLY_TX_PIN);
+
+#define WIFLY_GUARD_TIME			250
+#define WIFLY_ESCAPE_STRING			"$$$"
+
+enum {
+	START_WIFLY_STATE,
+	WAIT1_WIFLY_STATE,
+	WAIT2_WIFLY_STATE,
+	CMD_WIFLY_STATE,
+	CONNECTED_WIFLY_STATE,
+	FINISHED_WIFLY_STATE,
+} wiflyState;
+
+unsigned long wiflyWait;
+
+void wiflyHandler(void)
+{
+	switch(wiflyState) {
+	case START_WIFLY_STATE:
+		debug.println("Starting WiFly...");
+		wiflyWait = millis() + WIFLY_GUARD_TIME;
+		wiflyState = WAIT1_WIFLY_STATE;
+		break;
+
+	case WAIT1_WIFLY_STATE:
+		if((long)(millis() - wiflyWait) < 0L)
+			return;
+		debug.println(WIFLY_ESCAPE_STRING);
+		wiflyPort.print(WIFLY_ESCAPE_STRING);
+		wiflyWait = millis() + WIFLY_GUARD_TIME;
+		wiflyState = WAIT2_WIFLY_STATE;
+		break;
+
+	case WAIT2_WIFLY_STATE:
+		if((long)(millis() - wiflyWait) < 0L)
+			return;
+		debug.println("Entering command mode...");
+		wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
+		wiflyState = CMD_WIFLY_STATE;
+		/* fall through */
+
+	case CMD_WIFLY_STATE:
+		while(wiflyPort.available())
+			debug.write(wiflyPort.read());
+		if((long)(millis() - wiflyWait) < 0L)
+			return;
+		debug.println("Connected.");
+		wiflyPort.print("open www.north-winds.org 80\r");
+		wiflyWait = millis() + WIFLY_GUARD_TIME;
+		wiflyState = CONNECTED_WIFLY_STATE;
+		//wiflyState = START_WIFLY_STATE;
+		/* fall through */
+
+	case CONNECTED_WIFLY_STATE:
+		while(wiflyPort.available())
+			debug.write(wiflyPort.read());
+		if((long)(millis() - wiflyWait) < 0L)
+			return;
+		debug.println("Requesting page...");
+		wiflyPort.print("GET /cgi/nagios.pl?node=HOT&sensor=1&value=23.2&status=ok&message=Hello HTTP/1.1\r\n");
+		wiflyPort.print("Host: www.north-winds.org\r\n");
+		wiflyPort.print("Connection: close\r\n");
+		wiflyPort.print("\r\n");
+		wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
+		wiflyState = FINISHED_WIFLY_STATE;
+		/* fall through */
+
+	case FINISHED_WIFLY_STATE:
+		while(wiflyPort.available())
+			debug.write(wiflyPort.read());
+		if((long)(millis() - wiflyWait) < 0L)
+			return;
+		debug.println("Done.");
+		wiflyState = START_WIFLY_STATE;
+		break;
+
+	default:
+		wiflyState = START_WIFLY_STATE;
+		break;
+	}
+}
+
+void wiflyInit(void)
+{
+	debug.println("Initializing WiFly...");
+	pinMode(WIFLY_RX_PIN, INPUT);
+	pinMode(WIFLY_TX_PIN, OUTPUT);
+	wiflyPort.begin(9600);
+}
+
+
+
 void setup(void)
 {
-	xbeeInit();
+	//xbeeInit();
+	debug.begin(9600);
 	delay(5000);
 	debug.println("Hello, World!");
 
@@ -1689,22 +1787,24 @@ void setup(void)
 #endif
 
 	/* Initialize Analog sensors */
-	analogReference(DEFAULT);
+	//analogReference(DEFAULT);
 
 	/* Initialize Digital sensors */
-	pinMode(SCL, INPUT);
-	pinMode(SDA, INPUT);
-	digitalWrite(SCL, HIGH); /* Turn on pull-ups */
-	digitalWrite(SDA, HIGH);
-	Wire.begin();
+	//pinMode(SCL, INPUT);
+	//pinMode(SDA, INPUT);
+	//digitalWrite(SCL, HIGH); /* Turn on pull-ups */
+	//digitalWrite(SDA, HIGH);
+	//Wire.begin();
 
-	sensorInit();
+	//sensorInit();
+
+	wiflyInit();
 }
 
-extern "C" int addNewNodeCallback(nodeIdentification_t *node)
-{
-	return 0;
-}
+//extern "C" int addNewNodeCallback(nodeIdentification_t *node)
+//{
+//	return 0;
+//}
 
 void loop(void)
 {
@@ -1730,6 +1830,9 @@ void loop(void)
 	piezoHandler();
 #endif
 	//return;
+
+	wiflyHandler();
+	return;
 
 	unsigned long currentMillis = millis();
 	if(currentMillis - clockTick >= 1000UL) {
