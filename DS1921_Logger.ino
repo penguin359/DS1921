@@ -164,6 +164,7 @@ struct querySensorResponse sensorPayload;
 uint32_t clock;
 unsigned long clockTick;
 unsigned long sensorTick;
+unsigned long uploadTick;
 
 class SensorDebug : public Stream {
     private:
@@ -1677,6 +1678,23 @@ void xbeeInit(void)
 
 /* WiFly support */
 
+struct {
+	char *identifier;
+	struct querySensorResponse sensor;
+} sensorData = {
+	"COOLER",
+	{
+		3,
+		15,
+		0x01,
+		1324178532,
+	},
+};
+
+#define HTTP_HOST				"www.example.org"
+#define HTTP_PORT				"80"
+#define HTTP_PATH				"/cgi/nagios.pl"
+
 #define WIFLY_RX_PIN				2
 #define WIFLY_TX_PIN				3
 SoftwareSerial wiflyPort = SoftwareSerial(WIFLY_RX_PIN, WIFLY_TX_PIN);
@@ -1686,6 +1704,7 @@ SoftwareSerial wiflyPort = SoftwareSerial(WIFLY_RX_PIN, WIFLY_TX_PIN);
 #define WIFLY_ESCAPE_STRING			"$$$"
 
 typedef enum {
+	IDLE_WIFLY_STATE,
 	START_WIFLY_STATE,
 	WAIT1_WIFLY_STATE,
 	WAIT2_WIFLY_STATE,
@@ -1734,6 +1753,10 @@ void wiflyHandler(void)
 	//debug.print(wiflyState);
 	//debug.println("");
 	switch(wiflyState) {
+	case IDLE_WIFLY_STATE:
+		/* Waiting for instructions */
+		break;
+
 	case START_WIFLY_STATE:
 		debug.println("Starting WiFly...");
 		wiflyWait = millis() + WIFLY_GUARD_TIME;
@@ -1781,7 +1804,7 @@ void wiflyHandler(void)
 			wiflyReadNextLine(FALSE);
 			break;
 		}
-		wiflyPort.print("open www.north-winds.org 80\r");
+		wiflyPort.print("open " HTTP_HOST " " HTTP_PORT "\r");
 		wiflyReadLine(CONNECTED_WIFLY_STATE, TRUE);
 		break;
 		//wiflyWait = millis() + WIFLY_GUARD_TIME;
@@ -1805,8 +1828,22 @@ void wiflyHandler(void)
 			break;
 		}
 		debug.println("Requesting page...");
-		wiflyPort.print("GET /cgi/nagios.pl?node=HOT&sensor=1&value=23.2&status=ok&message=Hello HTTP/1.1\r\n");
-		wiflyPort.print("Host: www.north-winds.org\r\n");
+		wiflyPort.print("GET " HTTP_PATH "?node=");
+		wiflyPort.print(sensorData.identifier);
+		wiflyPort.print("&sensor=");
+		wiflyPort.print(sensorData.sensor.sensor);
+		wiflyPort.print("&type=");
+		wiflyPort.print(sensorData.sensor.type);
+		wiflyPort.print("&time=");
+		wiflyPort.print(sensorData.sensor.time);
+		wiflyPort.print("&value=");
+		wiflyPort.print(sensorData.sensor.data16[0]);
+		wiflyPort.print("&status=");
+		wiflyPort.print("ok");
+		wiflyPort.print("&message=");
+		wiflyPort.print("Hello");
+		wiflyPort.print(" HTTP/1.1\r\n");
+		wiflyPort.print("Host: " HTTP_HOST "\r\n");
 		wiflyPort.print("Connection: close\r\n");
 		wiflyPort.print("\r\n");
 		wiflyReadLine(FINISHED_WIFLY_STATE, TRUE);
@@ -1828,7 +1865,7 @@ void wiflyHandler(void)
 			break;
 		}
 		debug.println("Done.");
-		wiflyState = START_WIFLY_STATE;
+		wiflyState = IDLE_WIFLY_STATE;
 		break;
 
 	case READ_LINE_WIFLY_STATE:
@@ -1944,8 +1981,15 @@ void loop(void)
 #endif
 	//return;
 
+	if((long)(millis() - uploadTick) >= 0L) {
+		if(wiflyState == IDLE_WIFLY_STATE) {
+			sensorData.sensor.data16[0] = 0x421f;
+			debug.println("New sensor reading.");
+			wiflyState = START_WIFLY_STATE;
+			uploadTick = millis() + 30000UL;
+		}
+	}
 	wiflyHandler();
-	return;
 
 	unsigned long currentMillis = millis();
 	if(currentMillis - clockTick >= 1000UL) {
@@ -1954,6 +1998,7 @@ void loop(void)
 		debug.print("UTime=");
 		debug.println(clock, DEC);
 	}
+	return;
 
 #ifdef ONE_WIRE_SENSORS
 	if(serial.available()) {
