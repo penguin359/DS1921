@@ -1681,22 +1681,58 @@ void xbeeInit(void)
 #define WIFLY_TX_PIN				3
 SoftwareSerial wiflyPort = SoftwareSerial(WIFLY_RX_PIN, WIFLY_TX_PIN);
 
-#define WIFLY_GUARD_TIME			250
+#define WIFLY_READ_LINE_TIME			5000
+#define WIFLY_GUARD_TIME			350
 #define WIFLY_ESCAPE_STRING			"$$$"
 
-enum {
+typedef enum {
 	START_WIFLY_STATE,
 	WAIT1_WIFLY_STATE,
 	WAIT2_WIFLY_STATE,
 	CMD_WIFLY_STATE,
 	CONNECTED_WIFLY_STATE,
 	FINISHED_WIFLY_STATE,
-} wiflyState;
+	READ_LINE_WIFLY_STATE,
+	RESET_WIFLY_STATE,
+} wiflyState_t;
+
+wiflyState_t wiflyState;
+wiflyState_t wiflyNextState;
 
 unsigned long wiflyWait;
+bool wiflyReadStar;
+
+#define wiflyReadLine(state, readStar)	\
+			do { \
+				lineLen = 0; \
+				wiflyReadStar = (readStar); \
+				wiflyWait = millis() + WIFLY_READ_LINE_TIME; \
+				wiflyNextState = (state); \
+				wiflyState = READ_LINE_WIFLY_STATE; \
+			} while(0);
+#define wiflyReadNextLine(readStar) 	\
+			do { \
+				lineLen = 0; \
+				wiflyReadStar = (readStar); \
+				wiflyNextState = wiflyState; \
+				wiflyState = READ_LINE_WIFLY_STATE; \
+			} while(0);
+#define wiflyWait(state, wait)		\
+			do { \
+				wiflyWait = millis() + (wait); \
+				wiflyNextState = (state); \
+				wiflyState = WAIT_WIFLY_STATE; \
+			} while(0);
 
 void wiflyHandler(void)
 {
+	static char line[32];
+	static char lineLen;
+	char c;
+
+	//debug.print("S:");
+	//debug.print(wiflyState);
+	//debug.println("");
 	switch(wiflyState) {
 	case START_WIFLY_STATE:
 		debug.println("Starting WiFly...");
@@ -1705,9 +1741,12 @@ void wiflyHandler(void)
 		break;
 
 	case WAIT1_WIFLY_STATE:
+		/* flush out any characters in the input buffer */
+		while(wiflyPort.available())
+			debug.write(wiflyPort.read());
 		if((long)(millis() - wiflyWait) < 0L)
 			return;
-		debug.println(WIFLY_ESCAPE_STRING);
+		//debug.println(WIFLY_ESCAPE_STRING);
 		wiflyPort.print(WIFLY_ESCAPE_STRING);
 		wiflyWait = millis() + WIFLY_GUARD_TIME;
 		wiflyState = WAIT2_WIFLY_STATE;
@@ -1718,46 +1757,120 @@ void wiflyHandler(void)
 			return;
 		debug.println("Entering command mode...");
 		wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
-		wiflyState = CMD_WIFLY_STATE;
-		/* fall through */
+		//wiflyState = CMD_WIFLY_STATE;
+		wiflyReadLine(CMD_WIFLY_STATE, FALSE);
+		break;
 
 	case CMD_WIFLY_STATE:
-		while(wiflyPort.available())
-			debug.write(wiflyPort.read());
-		if((long)(millis() - wiflyWait) < 0L)
-			return;
-		debug.println("Connected.");
+		//debug.print("Comparing ");
+		//debug.print(line);
+		//debug.println(" to CMD");
+		if(strcmp(line, "CMD\n") == 0) {
+			if((long)(millis() - wiflyWait) < 0L) {
+				return;
+			}
+			debug.println("Connected.");
+		} else {
+			//debug.println("Something funny happening.");
+			if((long)(millis() - wiflyWait) >= 0L) {
+				debug.println("Timed out.");
+				//wiflyPort.print("exit\r");
+				wiflyState = RESET_WIFLY_STATE;
+				break;
+			}
+			wiflyReadNextLine(FALSE);
+			break;
+		}
 		wiflyPort.print("open www.north-winds.org 80\r");
-		wiflyWait = millis() + WIFLY_GUARD_TIME;
-		wiflyState = CONNECTED_WIFLY_STATE;
+		wiflyReadLine(CONNECTED_WIFLY_STATE, TRUE);
+		break;
+		//wiflyWait = millis() + WIFLY_GUARD_TIME;
+		//wiflyState = CONNECTED_WIFLY_STATE;
 		//wiflyState = START_WIFLY_STATE;
 		/* fall through */
 
 	case CONNECTED_WIFLY_STATE:
+#if 0
 		while(wiflyPort.available())
 			debug.write(wiflyPort.read());
 		if((long)(millis() - wiflyWait) < 0L)
 			return;
+#endif
+		if(strcmp(line, "*OPEN*") != 0) {
+			debug.println("Failed to connect.");
+			//debug.print("Have:'");
+			//debug.print(line);
+			//debug.println("'");
+			wiflyState = RESET_WIFLY_STATE;
+			break;
+		}
 		debug.println("Requesting page...");
 		wiflyPort.print("GET /cgi/nagios.pl?node=HOT&sensor=1&value=23.2&status=ok&message=Hello HTTP/1.1\r\n");
 		wiflyPort.print("Host: www.north-winds.org\r\n");
 		wiflyPort.print("Connection: close\r\n");
 		wiflyPort.print("\r\n");
-		wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
-		wiflyState = FINISHED_WIFLY_STATE;
+		wiflyReadLine(FINISHED_WIFLY_STATE, TRUE);
+		break;
+		//wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
+		//wiflyState = FINISHED_WIFLY_STATE;
 		/* fall through */
 
 	case FINISHED_WIFLY_STATE:
+#if 0
 		while(wiflyPort.available())
 			debug.write(wiflyPort.read());
 		if((long)(millis() - wiflyWait) < 0L)
 			return;
+#endif
+		if(strcmp(line, "*CLOS*") != 0) {
+			debug.println("Failed to receive document.");
+			wiflyState = RESET_WIFLY_STATE;
+			break;
+		}
 		debug.println("Done.");
 		wiflyState = START_WIFLY_STATE;
 		break;
 
-	default:
+	case READ_LINE_WIFLY_STATE:
+		/* Default behavior is to read a full line including the
+		 * trailing '\n', but wiflyReadStar changes to reading a
+		 * word surrounded by '*'s without a newline. */
+		while(wiflyPort.available()) {
+			c = wiflyPort.read();
+			debug.write(c);
+			if(c == '\r')
+				continue;
+			if(wiflyReadStar && lineLen == 0 && c != '*')
+				continue;
+			if(lineLen < sizeof(line)-1)
+				line[lineLen++] = c;
+			if(wiflyReadStar && lineLen <= 1)
+				break;
+			if(wiflyReadStar && c == '*' ||
+			  !wiflyReadStar && c == '\n') {
+				line[lineLen] = '\0';
+				wiflyState = wiflyNextState;
+				break;
+			}
+		}
+		if((long)(millis() - wiflyWait) >= 0L) {
+			line[lineLen] = '\0';
+			wiflyState = wiflyNextState;
+		}
+		break;
+
+	case RESET_WIFLY_STATE:
+		debug.println("Reseting WiFly...");
+		wiflyPort.print("exit\r");
+		/* flush out any characters in the input buffer */
+		while(wiflyPort.available())
+			debug.write(wiflyPort.read());
 		wiflyState = START_WIFLY_STATE;
+		break;
+
+	default:
+		debug.println("Funny WiFly state, FIXME!");
+		wiflyState = RESET_WIFLY_STATE;
 		break;
 	}
 }
