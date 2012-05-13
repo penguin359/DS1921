@@ -1,6 +1,11 @@
 .DS_Store
 .*.swp
 *.o
+/serial.h
+/xbee.h
+/xbee.c
+/sensor.h
+/sensor.c
 /src/*.csv
 /src/*.png
 /src/*.rrd

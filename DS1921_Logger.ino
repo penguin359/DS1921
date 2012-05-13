@@ -15,19 +15,22 @@
 
 //#define ARDUINO_UNO
 
-//#define DEBUG_XBEE
 //#define DEBUG_SENSOR
 //#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
+//#define USE_ARDUINO_XBEE
+
 #include "DS1921_Logger.h"
+#include "serial.h"
+#include "xbee.h"
 #include "sensor.h"
 
 #ifdef ARDUINO_UNO
 #include <SoftwareSerial.h>
 #endif
 
-#ifndef DEBUG_XBEE
+#ifdef USE_ARDUINO_XBEE
 #include <XBee.h>
 #endif
 
@@ -144,18 +147,19 @@ class Dummy : public Stream {
 	virtual size_t write(uint8_t val) { return 0; }
 };
 
-#ifndef DEBUG_XBEE
+#ifdef USE_ARDUINO_XBEE
 XBee xbee = XBee();
 //XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 ModemStatusResponse msr = ModemStatusResponse();
 XBeeAddress64 coordinator = XBeeAddress64(0x0, 0x0);
-//uint8_t payload[] = { 0x04, 'H', 'i' };
-uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
-//uint8_t sensorPayload[] = { 0x83, 0, 0x01, 0, 0, 0, 0, 0, 0, 0, 0 };
-struct querySensorResponse sensorPayload;
+#else
+xbee_t xbeeDevice;
+xbee_t *xbee = &xbeeDevice;
 #endif
+uint8_t timePayload[] = { 0x81, 0, 0, 0, 0 };
+struct querySensorResponse sensorPayload;
 
 uint32_t clock;
 unsigned long clockTick;
@@ -165,7 +169,7 @@ class SensorDebug : public Stream {
     private:
 	uint8_t debugPayload[110];
 	unsigned int offset;
-#ifndef DEBUG_XBEE
+#ifdef USE_ARDUINO_XBEE
 	ZBTxRequest zbTx;
 #endif
 
@@ -173,7 +177,7 @@ class SensorDebug : public Stream {
 	SensorDebug() : Stream() {
 		debugPayload[0] = 0x04;
 		offset = 1U;
-#ifndef DEBUG_XBEE
+#ifdef USE_ARDUINO_XBEE
 		zbTx = ZBTxRequest(coordinator, debugPayload, offset);
 #endif
 	}
@@ -182,7 +186,7 @@ class SensorDebug : public Stream {
 	virtual int read(void) { return 0; }
 	virtual int peek(void) { return 0; }
 	virtual void flush(void) {
-#ifndef DEBUG_XBEE
+#ifdef USE_ARDUINO_XBEE
 		zbTx.setPayloadLength(offset);
 		xbee.send(zbTx);
 #endif
@@ -214,7 +218,7 @@ class SensorDebug : public Stream {
 	}
 };
 
-#ifdef DEBUG_XBEE
+#ifndef USE_ARDUINO_XBEE
 HardwareSerial uart = HardwareSerial();
 #endif
 //#define debug Uart
@@ -1289,7 +1293,9 @@ sensorState_t readSensor(sensor_t *sensor)
 
 void processSensor(sensor_t *sensor)
 {
+#ifdef USE_ARDUINO_XBEE
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, NULL, 0);
+#endif
 	sensorState_t state = sensor->state;
 
 #ifdef DEBUG_TIMING
@@ -1318,10 +1324,14 @@ void processSensor(sensor_t *sensor)
 		sensorPayload.type = sensor->type;
 		sensorPayload.time = sensor->readingTime;
 		sensorPayload.data32[0] = sensor->data32[0];
+#ifdef USE_ARDUINO_XBEE
 		zbTx.setPayload((uint8_t *)&sensorPayload);
 		zbTx.setPayloadLength(sizeof(sensorPayload));
 		zbTx.setFrameId(frameId);
 		xbee.send(zbTx);
+#else
+		sendTx(xbee, (macAddr64_t *)&coordinatorAddr, &sensorPayload, sizeof(sensorPayload));
+#endif
 		sensor->waitTime = millis() + 5000UL;
 		sensor->state = XBEE_SEND_SENSOR_STATE;
 		break;
@@ -1530,19 +1540,20 @@ void piezoInit(void)
 
 void xbeeHandler(void)
 {
-#ifndef DEBUG_XBEE
+#ifdef USE_ARDUINO_XBEE
 	ZBTxRequest zbTx = ZBTxRequest(coordinator, NULL, 0);
 #endif
 	byte *dataPtr;
 	uint8_t sensor;
 
-#ifdef DEBUG_XBEE
+#ifndef USE_ARDUINO_XBEE
 	if(uart.available()) {
 		localDebug.print("XB: [");
 		while(uart.available())
 			localDebug.print(uart.read(), HEX);
 		localDebug.println("]");
 	}
+	recvApi(xbee);
 #else
 	xbee.readPacket();
 	if(xbee.getResponse().isAvailable()) {
@@ -1647,7 +1658,7 @@ void xbeeHandler(void)
 
 void xbeeInit(void)
 {
-#ifdef DEBUG_XBEE
+#ifndef USE_ARDUINO_XBEE
 	uart.begin(9600);
 #else
 #ifdef ARDUINO_UNO
