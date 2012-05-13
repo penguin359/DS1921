@@ -1861,7 +1861,7 @@ void wiflyHandler(void)
 
 	case RESET_WIFLY_STATE:
 		debug.println("Reseting WiFly...");
-		wiflyPort.print("exit\r");
+		wiflyPort.print("\rexit\r");
 		/* flush out any characters in the input buffer */
 		while(wiflyPort.available())
 			debug.write(wiflyPort.read());
