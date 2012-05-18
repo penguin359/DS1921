@@ -1986,10 +1986,10 @@ void setup(void)
 	wiflyInit();
 }
 
-//extern "C" int addNewNodeCallback(nodeIdentification_t *node)
-//{
-//	return 0;
-//}
+extern "C" int addNewNodeCallback(nodeIdentification_t *node)
+{
+	return 0;
+}
 
 void loop(void)
 {
