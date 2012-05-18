@@ -17,6 +17,7 @@
 
 //#define DEBUG_SENSOR
 //#define DEBUG_TIMING
+//#define DEBUG_WIFLY
 //#define USE_ZIGBEE_DEBUG
 
 #define USE_ARDUINO_XBEE
@@ -164,7 +165,7 @@ struct querySensorResponse sensorPayload;
 uint32_t clock;
 unsigned long clockTick;
 unsigned long sensorTick;
-unsigned long uploadTick;
+unsigned long uploadTick = 10000UL;
 
 class SensorDebug : public Stream {
     private:
@@ -893,8 +894,8 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 	//debug.print(", HIH loops: ");
 	//debug.println(i, DEC);
 	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
-	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 #ifdef DEBUG_SENSOR
+	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 	printSensor(sensor);
 	debug.print("HIH Humidity: ");
 	debug.print(humidityVal, DEC);
@@ -971,7 +972,6 @@ void hih6130SensorInit(void)
 
 sensorState_t readTCSensor(sensor_t *sensor)
 {
-	uint8_t val;
 #ifdef DEBUG_SENSOR
 	temp_t temp;
 #endif
@@ -1246,7 +1246,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 
 void oneWireSensorInit(void)
 {
-	int i, j;
+	int i;
 
 	for(i = 0; i < MAX_ONE_WIRE_SENSORS; i++)
 		oneWireSensors[i].addr[0] = 0x00;
@@ -1262,7 +1262,7 @@ void oneWireSensorInit(void)
 		sensor->addr = i;
 #ifdef DEBUG_SENSOR
 		debug.print("Found ROM =");
-		for(j = 0; j < 8; j++) {
+		for(int j = 0; j < 8; j++) {
 			debug.write(' ');
 			debug.print(oneWireSensors[i].addr[j], HEX);
 		}
@@ -1678,10 +1678,12 @@ void xbeeInit(void)
 
 /* WiFly support */
 
-struct {
-	char *identifier;
+typedef struct {
+	const char *identifier;
 	struct querySensorResponse sensor;
-} sensorData = {
+} sensorData_t;
+
+sensorData_t sensorData = {
 	"COOLER",
 	{
 		3,
@@ -1744,32 +1746,41 @@ bool wiflyReadStar;
 				wiflyState = WAIT_WIFLY_STATE; \
 			} while(0);
 
+#define MAX_CHAR	16
+
 void wiflyHandler(void)
 {
 	static char line[32];
-	static char lineLen;
+	static size_t lineLen;
+	int i;
 	char c;
 	char *status, *msg;
 	int statusCode;
 
+#ifdef DEBUG_WIFLY
 	//debug.print("S:");
 	//debug.print(wiflyState);
 	//debug.println("");
+#endif
 	switch(wiflyState) {
 	case IDLE_WIFLY_STATE:
 		/* Waiting for instructions */
 		break;
 
 	case START_WIFLY_STATE:
+#ifdef DEBUG_WIFLY
 		debug.println("Starting WiFly...");
+#endif
 		wiflyWait = millis() + WIFLY_GUARD_TIME;
 		wiflyState = WAIT1_WIFLY_STATE;
 		break;
 
 	case WAIT1_WIFLY_STATE:
 		/* flush out any characters in the input buffer */
-		while(wiflyPort.available())
+#ifdef DEBUG_WIFLY
+		for(i = 0; i < MAX_CHAR && wiflyPort.available(); i++)
 			debug.write(wiflyPort.read());
+#endif
 		if((long)(millis() - wiflyWait) < 0L)
 			return;
 		//debug.println(WIFLY_ESCAPE_STRING);
@@ -1781,7 +1792,9 @@ void wiflyHandler(void)
 	case WAIT2_WIFLY_STATE:
 		if((long)(millis() - wiflyWait) < 0L)
 			return;
+#ifdef DEBUG_WIFLY
 		debug.println("Entering command mode...");
+#endif
 		wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
 		//wiflyState = CMD_WIFLY_STATE;
 		wiflyReadLine(CMD_WIFLY_STATE, FALSE);
@@ -1795,11 +1808,15 @@ void wiflyHandler(void)
 			if((long)(millis() - wiflyWait) < 0L) {
 				return;
 			}
+#ifdef DEBUG_WIFLY
 			debug.println("Connected.");
+#endif
 		} else {
 			//debug.println("Something funny happening.");
 			if((long)(millis() - wiflyWait) >= 0L) {
+#ifdef DEBUG_WIFLY
 				debug.println("Timed out.");
+#endif
 				//wiflyPort.print("exit\r");
 				wiflyState = RESET_WIFLY_STATE;
 				break;
@@ -1817,14 +1834,18 @@ void wiflyHandler(void)
 
 	case CONNECTED_WIFLY_STATE:
 		if(strcmp(line, "*OPEN*") != 0) {
+#ifdef DEBUG_WIFLY
 			debug.println("Failed to connect.");
+#endif
 			//debug.print("Have:'");
 			//debug.print(line);
 			//debug.println("'");
 			wiflyState = RESET_WIFLY_STATE;
 			break;
 		}
+#ifdef DEBUG_WIFLY
 		debug.println("Requesting page...");
+#endif
 		wiflyPort.print("GET " HTTP_PATH "?node=");
 		wiflyPort.print(sensorData.identifier);
 		wiflyPort.print("&sensor=");
@@ -1877,7 +1898,7 @@ void wiflyHandler(void)
 
 	case FINISHED_WIFLY_STATE:
 #if 0
-		while(wiflyPort.available())
+		for(i = 0; i < MAX_CHAR && wiflyPort.available(); i++)
 			debug.write(wiflyPort.read());
 		if((long)(millis() - wiflyWait) < 0L)
 			return;
@@ -1895,9 +1916,12 @@ void wiflyHandler(void)
 		/* Default behavior is to read a full line including the
 		 * trailing '\n', but wiflyReadStar changes to reading a
 		 * word surrounded by '*'s without a newline. */
-		while(wiflyPort.available()) {
+		for(i = 0; i < MAX_CHAR && wiflyPort.available(); i++) {
 			c = wiflyPort.read();
+#ifdef DEBUG_WIFLY
+			//debug.write(".");
 			debug.write(c);
+#endif
 			if(c == '\r')
 				continue;
 			if(wiflyReadStar && lineLen == 0 && c != '*')
@@ -1906,8 +1930,8 @@ void wiflyHandler(void)
 				line[lineLen++] = c;
 			if(wiflyReadStar && lineLen <= 1)
 				break;
-			if(wiflyReadStar && c == '*' ||
-			  !wiflyReadStar && c == '\n') {
+			if((wiflyReadStar && c == '*') ||
+			  (!wiflyReadStar && c == '\n')) {
 				line[lineLen] = '\0';
 				wiflyState = wiflyNextState;
 				break;
@@ -1920,11 +1944,15 @@ void wiflyHandler(void)
 		break;
 
 	case RESET_WIFLY_STATE:
+#ifdef DEBUG_WIFLY
 		debug.println("Reseting WiFly...");
+#endif
 		wiflyPort.print("\rexit\r");
 		/* flush out any characters in the input buffer */
-		while(wiflyPort.available())
+#ifdef DEBUG_WIFLY
+		for(i = 0; i < MAX_CHAR && wiflyPort.available(); i++)
 			debug.write(wiflyPort.read());
+#endif
 		wiflyState = START_WIFLY_STATE;
 		break;
 
@@ -1986,7 +2014,7 @@ void loop(void)
 	static unsigned long maxMainLoopTime = 0;
 	unsigned long mainLoopStartTime = millis();
 #endif
-	static int sensorNum = 0;
+	static size_t sensorNum = 0;
 	sensor_t *sensor;
 
 #if 0
