@@ -735,10 +735,10 @@ void analogSensorInit(void)
 #define LM75_NUM_SENSORS		8
 #define LM75_BASE_ADDR			0x48
 
-#define LM75_TEMP_REGISTER		0
-#define LM75_CONFIG_REGISTER		1
-#define LM75_THYST_REGISTER		2
-#define LM75_TSET_REGISTER		3
+#define LM75_TEMP_REGISTER		(uint8_t)0
+#define LM75_CONFIG_REGISTER		(uint8_t)1
+#define LM75_THYST_REGISTER		(uint8_t)2
+#define LM75_TSET_REGISTER		(uint8_t)3
 
 #define LM75_CONFIG_ONE_SHOT		0x80
 

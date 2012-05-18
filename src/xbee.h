@@ -120,6 +120,9 @@ int sendTx(xbee_t *xbee, macAddr64_t *addr64, void *data, int len);
 int recvApi(xbee_t *xbee);
 
 
+int addNewNodeCallback(nodeIdentification_t *node);
+
+
 #ifdef __cplusplus /* If this is a C++ compiler, use C linkage */
 }
 #endif
