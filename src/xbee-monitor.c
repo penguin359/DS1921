@@ -148,6 +148,7 @@ int main(int argc, char **argv)
 #endif
 			lastTime = currentTime;
 		}
+		fflush(stdout);
 		fd_set rfds, wfds;
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);

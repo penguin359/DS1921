@@ -15,7 +15,7 @@
 
 #define ARDUINO_UNO
 
-//#define DEBUG_SENSOR
+#define DEBUG_SENSOR
 //#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
@@ -263,7 +263,9 @@ uint8_t getFrameId(void)
 }
 
 #ifdef ONE_WIRE_SENSORS
-OneWire ds(0);
+#define ONE_WIRE_PIN			9
+
+OneWire ds(ONE_WIRE_PIN);
 
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
 {
@@ -793,8 +795,8 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 		Wire.requestFrom(addr, (uint8_t)1);
 		config = Wire.read();
 #ifdef DEBUG_SENSOR
-		debug.print("LM75 Read Conf: 0x");
-		debug.println(config, HEX);
+		//debug.print("LM75 Read Conf: 0x");
+		//debug.println(config, HEX);
 #endif
 		if(config & LM75_CONFIG_ONE_SHOT)
 			return READ_SENSOR_STATE;
@@ -957,7 +959,7 @@ void hih6130SensorInit(void)
 
 #define TC_BASE_IDX			17
 #define TC_NUM_SENSORS			1
-//#define TC_BASE_ADDR			9
+#define TC_BASE_ADDR			0
 
 //#define tcOn()				digitalWrite(TC_BASE_ADDR, LOW)
 //#define tcOff()				digitalWrite(TC_BASE_ADDR, HIGH)
@@ -968,10 +970,14 @@ void hih6130SensorInit(void)
 #define TC_TRISTATE_FLAG			0x0001
 
 #define TC_VALUE_MASK				0x7ff8
+#define TC_VALUE_SHIFT				1
+//#define TC_PRESENCE_TEST			TC_TRISTATE_FLAG
+//#define TC_PRESENCE_MASK			~(TC_VALUE_MASK | TC_OPEN_FLAG)
+#define TC_PRESENCE_TEST			0
+#define TC_PRESENCE_MASK			~(TC_VALUE_MASK | TC_OPEN_FLAG | TC_TRISTATE_FLAG)
 
 sensorState_t readTCSensor(sensor_t *sensor)
 {
-	uint8_t val;
 #ifdef DEBUG_SENSOR
 	temp_t temp;
 #endif
@@ -980,13 +986,16 @@ sensorState_t readTCSensor(sensor_t *sensor)
 		return ERROR_SENSOR_STATE;
 
 	switch(sensor->state) {
-		uint8_t val;
+		uint16_t val;
 	case START_SENSOR_STATE:
+		digitalWrite(sensor->addr, LOW); /* SS inactive high */
+		delayMicroseconds(1);
 		val = SPI.transfer(0xff) << 8;
 		val |= SPI.transfer(0xff);
+		digitalWrite(sensor->addr, HIGH);
 #ifdef DEBUG_SENSOR
 		printSensor(sensor);
-		temp = (float)(val & ~0x05) * 0.25f;
+		temp = (float)((val & TC_VALUE_MASK) >> 3) * 0.25f;
 		debug.print("SPI Val: ");
 		debug.println(val, DEC);
 		printTemp(temp);
@@ -995,7 +1004,7 @@ sensorState_t readTCSensor(sensor_t *sensor)
 			sensor->data16[0] = -1;
 			return ERROR_SENSOR_STATE;
 		}
-		sensor->data16[0] = ((val & TC_VALUE_MASK) << 2) + (CELSIUS_TO_KELVIN << 4);
+		sensor->data16[0] = ((val & TC_VALUE_MASK) >> TC_VALUE_SHIFT) + (CELSIUS_TO_KELVIN << 4);
 		break;
 
 	default:
@@ -1008,18 +1017,42 @@ sensorState_t readTCSensor(sensor_t *sensor)
 
 void tcSensorInit(void)
 {
+	//pinMode(1, OUTPUT);
+	////pinMode(2, OUTPUT);
+	//pinMode(3, INPUT);
+	////digitalWrite(1, LOW);  /* SCLK idle low */
+	////digitalWrite(2, HIGH);
+	//digitalWrite(3, HIGH); /* turn on pull-ups */
+	//delayMicroseconds(1);
 	SPI.begin();
 	SPI.setBitOrder(MSBFIRST);
-	SPI.setDataMode(SPI_MODE3); /* Idle high, falling-edge */
+	SPI.setDataMode(SPI_MODE1); /* Idle low, falling-edge */
 	SPI.setClockDivider(SPI_CLOCK_DIV4); /* 4.3MHz max */
 
 	for(int8_t i = TC_NUM_SENSORS-1; i >= 0; i--) {
-		//uint8_t addr = TC_BASE_ADDR + i;
-		if(1 != 0)
+		uint8_t addr = TC_BASE_ADDR + i;
+		pinMode(addr, OUTPUT);
+		digitalWrite(addr, HIGH); /* SS inactive high */
+		delayMicroseconds(1);
+		digitalWrite(addr, LOW);
+		delayMicroseconds(1);
+		uint16_t val = SPI.transfer(0xff) << 8;
+		val |= SPI.transfer(0xff);
+		digitalWrite(addr, HIGH);
+#ifdef DEBUG_SENSOR
+		printSensor(&sensors[i+TC_BASE_IDX]);
+		debug.print("Initial SPI Val: ");
+		debug.println(val, DEC);
+		debug.print("Masked SPI Val: ");
+		debug.println(val & TC_PRESENCE_MASK, DEC);
+		debug.print("Tested SPI Val: ");
+		debug.println(TC_PRESENCE_TEST, DEC);
+#endif
+		if((val & TC_PRESENCE_MASK) != TC_PRESENCE_TEST && val != 0)
 			continue;
 		sensor_t *sensor = &sensors[i+TC_BASE_IDX];
 		sensor->type = TC_SENSOR_TYPE;
-		//sensor->addr = addr;
+		sensor->addr = addr;
 	}
 }
 
@@ -1059,7 +1092,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 #endif
 
 		if (OneWire::crc8(addr, 7) != addr[7]) {
-			debug.print("  CRC is not valid!");
+			debug.println("  CRC is not valid!");
 			return ERROR_SENSOR_STATE;
 		}
 		debug.println();
@@ -1384,10 +1417,12 @@ void printSensor(sensor_t *sensor)
 		debug.print("TC(");
 		idx -= TC_BASE_IDX;
 		break;
+#ifdef ONE_WIRE_SENSORS
 	case ONE_WIRE_SENSOR_TYPE:
 		debug.print("1-Wire(");
 		idx -= ONE_WIRE_BASE_IDX;
 		break;
+#endif
 	case LIGHT_SENSOR_TYPE:
 		debug.print("Light(");
 		idx -= ANALOG_BASE_IDX;
