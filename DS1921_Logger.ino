@@ -794,8 +794,8 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 		Wire.requestFrom(addr, (uint8_t)1);
 		config = Wire.read();
 #ifdef DEBUG_SENSOR
-		debug.print("LM75 Read Conf: 0x");
-		debug.println(config, HEX);
+		//debug.print("LM75 Read Conf: 0x");
+		//debug.println(config, HEX);
 #endif
 		if(config & LM75_CONFIG_ONE_SHOT)
 			return READ_SENSOR_STATE;
@@ -970,8 +970,10 @@ void hih6130SensorInit(void)
 
 #define TC_VALUE_MASK				0x7ff8
 #define TC_VALUE_SHIFT				1
-#define TC_PRESENCE_TEST			TC_TRISTATE_FLAG
-#define TC_PRESENCE_MASK			~(TC_VALUE_MASK | TC_OPEN_FLAG)
+//#define TC_PRESENCE_TEST			TC_TRISTATE_FLAG
+//#define TC_PRESENCE_MASK			~(TC_VALUE_MASK | TC_OPEN_FLAG)
+#define TC_PRESENCE_TEST			0
+#define TC_PRESENCE_MASK			~(TC_VALUE_MASK | TC_OPEN_FLAG | TC_TRISTATE_FLAG)
 
 sensorState_t readTCSensor(sensor_t *sensor)
 {
@@ -1014,14 +1016,13 @@ sensorState_t readTCSensor(sensor_t *sensor)
 
 void tcSensorInit(void)
 {
-	pinMode(0, OUTPUT);
-	pinMode(1, OUTPUT);
-	pinMode(2, OUTPUT);
-	pinMode(3, INPUT);
-	digitalWrite(0, HIGH); /* SS inactive high */
-	digitalWrite(1, LOW);  /* SCLK idle low */
-	digitalWrite(2, HIGH);
-	digitalWrite(3, HIGH); /* turn on pull-ups */
+	//pinMode(1, OUTPUT);
+	////pinMode(2, OUTPUT);
+	//pinMode(3, INPUT);
+	////digitalWrite(1, LOW);  /* SCLK idle low */
+	////digitalWrite(2, HIGH);
+	//digitalWrite(3, HIGH); /* turn on pull-ups */
+	//delayMicroseconds(1);
 	SPI.begin();
 	SPI.setBitOrder(MSBFIRST);
 	SPI.setDataMode(SPI_MODE1); /* Idle low, falling-edge */
@@ -1029,6 +1030,9 @@ void tcSensorInit(void)
 
 	for(int8_t i = TC_NUM_SENSORS-1; i >= 0; i--) {
 		uint8_t addr = TC_BASE_ADDR + i;
+		pinMode(addr, OUTPUT);
+		digitalWrite(addr, HIGH); /* SS inactive high */
+		delayMicroseconds(1);
 		digitalWrite(addr, LOW);
 		delayMicroseconds(1);
 		uint16_t val = SPI.transfer(0xff) << 8;
@@ -1043,7 +1047,7 @@ void tcSensorInit(void)
 		debug.print("Tested SPI Val: ");
 		debug.println(TC_PRESENCE_TEST, DEC);
 #endif
-		if((val & TC_PRESENCE_MASK) != TC_PRESENCE_TEST)
+		if((val & TC_PRESENCE_MASK) != TC_PRESENCE_TEST && val != 0)
 			continue;
 		sensor_t *sensor = &sensors[i+TC_BASE_IDX];
 		sensor->type = TC_SENSOR_TYPE;
@@ -1087,7 +1091,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 #endif
 
 		if (OneWire::crc8(addr, 7) != addr[7]) {
-			debug.print("  CRC is not valid!");
+			debug.println("  CRC is not valid!");
 			return ERROR_SENSOR_STATE;
 		}
 		debug.println();
