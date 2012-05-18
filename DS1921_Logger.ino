@@ -15,11 +15,11 @@
 
 //#define ARDUINO_UNO
 
-//#define DEBUG_SENSOR
+#define DEBUG_SENSOR
 //#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
-//#define USE_ARDUINO_XBEE
+#define USE_ARDUINO_XBEE
 
 #include "DS1921_Logger.h"
 #include "serial.h"
@@ -262,7 +262,9 @@ uint8_t getFrameId(void)
 }
 
 #ifdef ONE_WIRE_SENSORS
-OneWire ds(0);
+#define ONE_WIRE_PIN			9
+
+OneWire ds(ONE_WIRE_PIN);
 
 void writeDS18B20(byte *addr, byte high, byte low, byte config)
 {
@@ -1383,10 +1385,12 @@ void printSensor(sensor_t *sensor)
 		debug.print("TC(");
 		idx -= TC_BASE_IDX;
 		break;
+#ifdef ONE_WIRE_SENSORS
 	case ONE_WIRE_SENSOR_TYPE:
 		debug.print("1-Wire(");
 		idx -= ONE_WIRE_BASE_IDX;
 		break;
+#endif
 	case LIGHT_SENSOR_TYPE:
 		debug.print("Light(");
 		idx -= ANALOG_BASE_IDX;
