@@ -1710,6 +1710,7 @@ typedef enum {
 	WAIT2_WIFLY_STATE,
 	CMD_WIFLY_STATE,
 	CONNECTED_WIFLY_STATE,
+	HTTP_STATUS_WIFLY_STATE,
 	FINISHED_WIFLY_STATE,
 	READ_LINE_WIFLY_STATE,
 	RESET_WIFLY_STATE,
@@ -1748,6 +1749,8 @@ void wiflyHandler(void)
 	static char line[32];
 	static char lineLen;
 	char c;
+	char *status, *msg;
+	int statusCode;
 
 	//debug.print("S:");
 	//debug.print(wiflyState);
@@ -1813,12 +1816,6 @@ void wiflyHandler(void)
 		/* fall through */
 
 	case CONNECTED_WIFLY_STATE:
-#if 0
-		while(wiflyPort.available())
-			debug.write(wiflyPort.read());
-		if((long)(millis() - wiflyWait) < 0L)
-			return;
-#endif
 		if(strcmp(line, "*OPEN*") != 0) {
 			debug.println("Failed to connect.");
 			//debug.print("Have:'");
@@ -1846,11 +1843,37 @@ void wiflyHandler(void)
 		wiflyPort.print("Host: " HTTP_HOST "\r\n");
 		wiflyPort.print("Connection: close\r\n");
 		wiflyPort.print("\r\n");
+		wiflyReadLine(HTTP_STATUS_WIFLY_STATE, FALSE);
+		break;
+
+	case HTTP_STATUS_WIFLY_STATE:
+		if(strncmp(line, "HTTP/1.", 7) != 0 ||
+		   (status = strchr(line, ' ')) == NULL) {
+			debug.println("Failed to HTTP respond.");
+			//debug.print("Have:'");
+			//debug.print(line);
+			//debug.println("'");
+			//wiflyState = RESET_WIFLY_STATE;
+			wiflyReadLine(FINISHED_WIFLY_STATE, TRUE);
+			break;
+		}
+		*status++ = '\0';
+		if((msg = strchr(status, ' ')) == NULL) {
+			debug.println("Failed to HTTP2 respond.");
+			//debug.print("Have:'");
+			//debug.print(line);
+			//debug.println("'");
+			//wiflyState = RESET_WIFLY_STATE;
+			wiflyReadLine(FINISHED_WIFLY_STATE, TRUE);
+			break;
+		}
+		*msg++ = '\0';
+		statusCode = atoi(status);
+		if(statusCode != 200) {
+			debug.println("Bad HTTP status.");
+		}
 		wiflyReadLine(FINISHED_WIFLY_STATE, TRUE);
 		break;
-		//wiflyWait = millis() + WIFLY_GUARD_TIME * 8;
-		//wiflyState = FINISHED_WIFLY_STATE;
-		/* fall through */
 
 	case FINISHED_WIFLY_STATE:
 #if 0
