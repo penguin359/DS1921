@@ -894,8 +894,8 @@ sensorState_t readHIH6130Sensor(sensor_t *sensor)
 	//debug.print(", HIH loops: ");
 	//debug.println(i, DEC);
 	//float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / (float)(2^14 - 1);
-	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 #ifdef DEBUG_SENSOR
+	float humidity = (float)(humidityVal & ~HIH6130_STATUS_MASK) / 16383.f * 100.f;
 	printSensor(sensor);
 	debug.print("HIH Humidity: ");
 	debug.print(humidityVal, DEC);
@@ -1278,7 +1278,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 
 void oneWireSensorInit(void)
 {
-	int i, j;
+	int i;
 
 	for(i = 0; i < MAX_ONE_WIRE_SENSORS; i++)
 		oneWireSensors[i].addr[0] = 0x00;
@@ -1294,7 +1294,7 @@ void oneWireSensorInit(void)
 		sensor->addr = i;
 #ifdef DEBUG_SENSOR
 		debug.print("Found ROM =");
-		for(j = 0; j < 8; j++) {
+		for(int j = 0; j < 8; j++) {
 			debug.write(' ');
 			debug.print(oneWireSensors[i].addr[j], HEX);
 		}
@@ -1748,7 +1748,7 @@ void loop(void)
 	static unsigned long maxMainLoopTime = 0;
 	unsigned long mainLoopStartTime = millis();
 #endif
-	static int sensorNum = 0;
+	static size_t sensorNum = 0;
 	sensor_t *sensor;
 
 #if 0
