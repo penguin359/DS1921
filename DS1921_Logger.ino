@@ -2120,7 +2120,7 @@ void loop(void)
 	}
 #endif
 
-	//xbeeHandler();
+	xbeeHandler();
 
 	//sensorHandler();
 
