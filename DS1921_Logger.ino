@@ -17,7 +17,7 @@
 
 #define DEBUG_SENSOR
 #define DEBUG_TIMING
-//#define USE_ZIGBEE_DEBUG
+#define USE_ZIGBEE_DEBUG
 
 #define USE_ARDUINO_XBEE
 
@@ -227,26 +227,15 @@ HardwareSerial uart = HardwareSerial();
 #if defined(CORE_TEENSY) || defined(USE_SOFT_XBEE)
 #define localDebug Serial
 #else
+Dummy dummy = Dummy();
 #define localDebug dummy
-#define NEED_DUMMY_STREAM
 #endif
 
 /* debug can send output over Zigbee or locally */
 #ifdef USE_ZIGBEE_DEBUG
 SensorDebug debug = SensorDebug();
 #else
-//#if defined(CORE_TEENSY) || defined(USE_SOFT_XBEE)
-//#define debug Serial
-//#else
-//#define debug dummy
-//#define NEED_DUMMY_STREAM
-//#endif
 #define debug localDebug
-#endif
-
-#ifdef NEED_DUMMY_STREAM
-Dummy dummy = Dummy();
-#undef NEED_DUMMY_STREAM
 #endif
 
 //#define serial Serial
@@ -652,13 +641,10 @@ void printTemp(temp_t celsius)
 #endif
 	}
 	fahrenheit = celsius * 1.8 + 32.0;
-	//debug.print("  ATemperature = ");
 	debug.print("  T=");
 	debug.print(celsius);
-	//debug.print(" Celsius, ");
 	debug.print("C, ");
 	debug.print(fahrenheit);
-	//debug.println(" Fahrenheit");
 	debug.println("F");
 }
 
@@ -1335,14 +1321,20 @@ void processSensor(sensor_t *sensor)
 #endif
 	sensorState_t state = sensor->state;
 
+	if(sensor->type == NONE_SENSOR_TYPE) {
+		sensor->state = STOP_SENSOR_STATE;
+		return;
+	}
+
 #ifdef DEBUG_TIMING
 	if(state == START_SENSOR_STATE) {
 		sensor->startTime = millis();
-	} else if((long)(millis() - (sensor->startTime + 15000UL)) >= 0L) {
+	} else if(state < STOP_SENSOR_STATE &&
+		  (long)(millis() - (sensor->startTime + 15000UL)) >= 0L) {
 		debug.print("Sensor ");
 		debug.print(sensor->id);
 		debug.println(" stuck for 15s, stopping...");
-		sensor->state = ERROR_SENSOR_STATE;
+		sensor->state = STOP_SENSOR_STATE;
 		return;
 	}
 #endif
@@ -1389,12 +1381,12 @@ void processSensor(sensor_t *sensor)
 
 	case ERROR_SENSOR_STATE:
 	case XBEE_ACK_SENSOR_STATE:
-	case STOP_SENSOR_STATE:
 #ifdef DEBUG_TIMING
 		debug.print("Took ");
 		debug.print(millis() - sensor->startTime, DEC);
 		debug.println(" ms\n");
 #endif
+	case STOP_SENSOR_STATE:
 		/* nothing more to do once sensor data has been acknowledged */
 		sensor->state = STOP_SENSOR_STATE;
 		break;
@@ -1755,11 +1747,11 @@ extern "C" int addNewNodeCallback(nodeIdentification_t *node)
 void loop(void)
 {
 #ifdef DEBUG_TIMING
-	static unsigned long lastMainLoopTime = 0;
-	static unsigned long maxMainLoopTime = 0;
+	static unsigned long nextMainLoopTime = 0UL;
+	static unsigned long maxMainLoopTime = 0UL;
 	unsigned long mainLoopStartTime = millis();
 #endif
-	static size_t sensorNum = 0;
+	static size_t sensorNum;
 	sensor_t *sensor;
 
 #if 0
@@ -1795,6 +1787,7 @@ void loop(void)
 
 	if(currentMillis - sensorTick >= 5000UL) {
 		sensor = &sensors[sensorNum];
+#if 0
 		switch(sensorNum) {
 		//case 0 + ANALOG_BASE_IDX:
 		//case 1 + ANALOG_BASE_IDX:
@@ -1839,18 +1832,23 @@ void loop(void)
 		case 29:
 		case 30:
 		case 31:
+#endif
 			//debug.print("Sensor: ");
 			//debug.println(sensorNum);
 			processSensor(sensor);
 			//printSensor(sensor);
 			if(sensor->state >= STOP_SENSOR_STATE) {
-				processSensor(sensor);
-				sensorNum++;
-				sensor = &sensors[sensorNum];
+				//processSensor(sensor);
 				sensor->state = START_SENSOR_STATE;
-			} else {
-				//debug.println("Waiting...");
+				sensorNum++;
+				if(sensorNum >= sizeof(sensors)/sizeof(sensors[0])) {
+					sensorTick += 5000UL;
+					sensorNum = 0;
+				}
+				//sensor = &sensors[sensorNum];
+				//sensor->state = START_SENSOR_STATE;
 			}
+#if 0
 			break;
 
 		default:
@@ -1865,18 +1863,19 @@ void loop(void)
 
 			break;
 		}
+#endif
 	}
 
 #ifdef DEBUG_TIMING
 	currentMillis = millis();
 	if(maxMainLoopTime < currentMillis - mainLoopStartTime)
 		maxMainLoopTime = currentMillis - mainLoopStartTime;
-	if(currentMillis - lastMainLoopTime >= 10000UL) {
+	if((long)(currentMillis - nextMainLoopTime) >= 0L) {
 		debug.print("Main loop took ");
 		debug.print(maxMainLoopTime, DEC);
 		debug.println(" ms max");
-		maxMainLoopTime = 0;
-		lastMainLoopTime = millis();
+		maxMainLoopTime = 0UL;
+		nextMainLoopTime = millis() + 10000UL;
 	}
 #endif
 }
