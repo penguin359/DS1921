@@ -22,6 +22,13 @@
 
 #define USE_ARDUINO_XBEE
 
+//#define ONE_WIRE_SENSORS
+#define SELF_POWERED
+
+#define LED_NOTIFICATION
+#define PIEZO_NOTIFICATION
+
+
 #include "DS1921_Logger.h"
 #include "serial.h"
 #include "xbee.h"
@@ -35,16 +42,9 @@
 #include <XBee.h>
 #endif
 
-#define SELF_POWERED			1
-
-#define ONE_WIRE_SENSORS
-
 #ifdef ONE_WIRE_SENSORS
 #include <OneWire.h>
 #endif
-
-#define LED_NOTIFICATION
-#define PIEZO_NOTIFICATION
 
 
 #define DS18B20_CONVERT_TEMP		0x44
@@ -105,11 +105,7 @@
 
 
 #ifdef LED_NOTIFICATION
-//#ifdef CORE_TEENSY
-//#define LED_PIN				11
-//#else
 #define LED_PIN				LED_BUILTIN
-//#endif
 #define ledOn()				digitalWrite(LED_PIN, HIGH)
 #define ledOff()			digitalWrite(LED_PIN, LOW)
 #endif
@@ -133,6 +129,10 @@
 
 
 #ifdef ARDUINO_UNO
+#define USE_SOFT_XBEE
+#endif
+
+#ifdef USE_SOFT_XBEE
 #define XBEE_RX_PIN			2
 #define XBEE_TX_PIN			3
 SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
@@ -164,7 +164,6 @@ struct querySensorResponse sensorPayload;
 
 uint32_t clock;
 unsigned long clockTick;
-unsigned long sensorTick;
 unsigned long uploadTick = 10000UL;
 
 class SensorDebug : public Stream {
@@ -222,29 +221,22 @@ class SensorDebug : public Stream {
 
 #ifndef USE_ARDUINO_XBEE
 HardwareSerial uart = HardwareSerial();
-#endif
 //#define debug Uart
+#endif
+
+/* localDebug uses serial port if available */
+#if defined(CORE_TEENSY) || defined(USE_SOFT_XBEE)
+#define localDebug Serial
+#else
+Dummy dummy = Dummy();
+#define localDebug dummy
+#endif
+
+/* debug can send output over Zigbee or locally */
 #ifdef USE_ZIGBEE_DEBUG
 SensorDebug debug = SensorDebug();
 #else
-#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
-#define debug Serial
-#else
-#define debug dummy
-#define NEED_DUMMY_STREAM
-#endif
-#endif
-
-#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
-#define localDebug Serial
-#else
-#define localDebug dummy
-#define NEED_DUMMY_STREAM
-#endif
-
-#ifdef NEED_DUMMY_STREAM
-Dummy dummy = Dummy();
-#undef NEED_DUMMY_STREAM
+#define debug localDebug
 #endif
 
 //#define serial Serial
@@ -650,19 +642,17 @@ void printTemp(temp_t celsius)
 #endif
 	}
 	fahrenheit = celsius * 1.8 + 32.0;
-	//debug.print("  ATemperature = ");
 	debug.print("  T=");
 	debug.print(celsius);
-	//debug.print(" Celsius, ");
 	debug.print("C, ");
 	debug.print(fahrenheit);
-	//debug.println(" Fahrenheit");
 	debug.println("F");
 }
 
 
 
-sensor_t sensors[32];
+#define MAX_SENSORS			32U
+sensor_t sensors[MAX_SENSORS];
 
 void printSensor(sensor_t *sensor);
 
@@ -704,11 +694,11 @@ void analogSensorInit(void)
 	const int sensorPin[] = {
 		A0,
 		A1,
-		A2,
-		A3,
-#ifdef CORE_TEENSY
-		A4,
-		A5,
+		//A2,
+		//A3,
+#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
+		//A4,
+		//A5,
 #else
 		A6,
 		A7,
@@ -764,7 +754,7 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 {
 	uint8_t addr = sensor->addr;
 	uint8_t config = 0;
-	uint8_t val;
+	uint16_t val;
 #ifdef DEBUG_SENSOR
 	temp_t temp;
 #endif
@@ -1333,9 +1323,22 @@ void processSensor(sensor_t *sensor)
 #endif
 	sensorState_t state = sensor->state;
 
+	if(sensor->type == NONE_SENSOR_TYPE) {
+		sensor->state = STOP_SENSOR_STATE;
+		return;
+	}
+
 #ifdef DEBUG_TIMING
-	if(state == START_SENSOR_STATE)
+	if(state == START_SENSOR_STATE) {
 		sensor->startTime = millis();
+	} else if(state < STOP_SENSOR_STATE &&
+		  (long)(millis() - (sensor->startTime + 15000UL)) >= 0L) {
+		debug.print("Sensor ");
+		debug.print(sensor->id);
+		debug.println(" stuck for 15s, stopping...");
+		sensor->state = STOP_SENSOR_STATE;
+		return;
+	}
 #endif
 	if(state < COMPLETED_SENSOR_STATE) {
 		if(state == WAIT_SENSOR_STATE) {
@@ -1380,18 +1383,19 @@ void processSensor(sensor_t *sensor)
 
 	case ERROR_SENSOR_STATE:
 	case XBEE_ACK_SENSOR_STATE:
-	case STOP_SENSOR_STATE:
 #ifdef DEBUG_TIMING
 		debug.print("Took ");
 		debug.print(millis() - sensor->startTime, DEC);
 		debug.println(" ms\n");
 #endif
+	case STOP_SENSOR_STATE:
 		/* nothing more to do once sensor data has been acknowledged */
 		sensor->state = STOP_SENSOR_STATE;
 		break;
 
 	default:
 		sensor->state = START_SENSOR_STATE;
+		debug.println("Funny state for sensor");
 		break;
 	}
 }
@@ -1437,9 +1441,32 @@ void printSensor(sensor_t *sensor)
 	debug.print("): ");
 }
 
+void sensorHandler(void)
+{
+	static unsigned long sensorTick;
+	static uint8_t sensorNum;
+	sensor_t *sensor;
+
+	if((long)(millis() - sensorTick) >= 0L) {
+		sensor = &sensors[sensorNum];
+		//debug.print("Sensor: ");
+		//debug.println(sensorNum);
+		processSensor(sensor);
+		if(sensor->state >= STOP_SENSOR_STATE) {
+			sensor->state = START_SENSOR_STATE;
+			sensorNum++;
+			if(sensorNum >= MAX_SENSORS) {
+				sensorTick += 5000UL;
+				sensorNum = 0;
+			}
+		}
+	}
+}
+
 void sensorInit(void)
 {
-	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+	//for(int8_t i = MAX_SENSORS; --i >= 0; ) {
+	for(int8_t i = 0; i < (int8_t)MAX_SENSORS; i++) {
 		sensors[i].id = i;
 		sensors[i].type = NONE_SENSOR_TYPE;
 		sensors[i].state = START_SENSOR_STATE;
@@ -1456,8 +1483,10 @@ void sensorInit(void)
 
 #ifdef DEBUG_SENSOR
 	debug.println("Found sensors:");
-	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
-		sensor_t *sensor = &sensors[32-i-1];
+	//for(int8_t i = MAX_SENSORS; --i >= 0; ) {
+	for(int8_t i = 0; i < (int8_t)MAX_SENSORS; i++) {
+		//sensor_t *sensor = &sensors[32-i-1];
+		sensor_t *sensor = &sensors[i];
 		if(sensor->type == NONE_SENSOR_TYPE)
 			continue;
 		debug.print("  ");
@@ -1698,7 +1727,7 @@ void xbeeInit(void)
 #ifndef USE_ARDUINO_XBEE
 	uart.begin(9600);
 #else
-#ifdef ARDUINO_UNO
+#ifdef USE_SOFT_XBEE
 	localDebug.begin(9600);
 	pinMode(XBEE_RX_PIN, INPUT);
 	pinMode(XBEE_TX_PIN, OUTPUT);
@@ -2013,7 +2042,7 @@ void setup(void)
 {
 	//xbeeInit();
 	debug.begin(9600);
-	delay(5000);
+	//delay(5000);
 	debug.println("Hello, World!");
 
 #ifdef LED_NOTIFICATION
@@ -2046,12 +2075,10 @@ extern "C" int addNewNodeCallback(nodeIdentification_t *node)
 void loop(void)
 {
 #ifdef DEBUG_TIMING
-	static unsigned long lastMainLoopTime = 0;
-	static unsigned long maxMainLoopTime = 0;
+	static unsigned long nextMainLoopTime = 0UL;
+	static unsigned long maxMainLoopTime = 0UL;
 	unsigned long mainLoopStartTime = millis();
 #endif
-	static size_t sensorNum = 0;
-	sensor_t *sensor;
 
 #if 0
 	//set_sleep_mode(SLEEP_MODE_IDLE);
@@ -2095,58 +2122,18 @@ void loop(void)
 
 	xbeeHandler();
 
-	if(currentMillis - sensorTick >= 5000UL) {
-		sensor = &sensors[sensorNum];
-		switch(sensorNum) {
-		case 0 + ANALOG_BASE_IDX:
-		case 1 + ANALOG_BASE_IDX:
-		case 2 + ANALOG_BASE_IDX:
-		case 7 + LM75_BASE_IDX:
-		case 0 + HIH6130_BASE_IDX:
-		case 0 + TC_BASE_IDX:
-#ifdef ONE_WIRE_SENSORS
-		case 0 + ONE_WIRE_BASE_IDX:
-		case 1 + ONE_WIRE_BASE_IDX:
-		case 2 + ONE_WIRE_BASE_IDX:
-#endif
-			//debug.print("Sensor: ");
-			//debug.println(sensorNum);
-			processSensor(sensor);
-			//printSensor(sensor);
-			if(sensor->state >= STOP_SENSOR_STATE) {
-				processSensor(sensor);
-				sensorNum++;
-				sensor = &sensors[sensorNum];
-				sensor->state = START_SENSOR_STATE;
-			} else {
-				//debug.println("Waiting...");
-			}
-			break;
-
-		default:
-			if(sensorNum >= sizeof(sensors)/sizeof(sensors[0])) {
-				sensorTick += 5000UL;
-				sensorNum = 0;
-			} else {
-				sensorNum++;
-			}
-			sensor = &sensors[sensorNum];
-			sensor->state = START_SENSOR_STATE;
-
-			break;
-		}
-	}
+	sensorHandler();
 
 #ifdef DEBUG_TIMING
 	currentMillis = millis();
 	if(maxMainLoopTime < currentMillis - mainLoopStartTime)
 		maxMainLoopTime = currentMillis - mainLoopStartTime;
-	if(currentMillis - lastMainLoopTime >= 10000UL) {
+	if((long)(currentMillis - nextMainLoopTime) >= 0L) {
 		debug.print("Main loop took ");
 		debug.print(maxMainLoopTime, DEC);
 		debug.println(" ms max");
-		maxMainLoopTime = 0;
-		lastMainLoopTime = millis();
+		maxMainLoopTime = 0UL;
+		nextMainLoopTime = millis() + 10000UL;
 	}
 #endif
 }
