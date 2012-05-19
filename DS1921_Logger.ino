@@ -163,7 +163,6 @@ struct querySensorResponse sensorPayload;
 
 uint32_t clock;
 unsigned long clockTick;
-unsigned long sensorTick;
 
 class SensorDebug : public Stream {
     private:
@@ -650,7 +649,8 @@ void printTemp(temp_t celsius)
 
 
 
-sensor_t sensors[32];
+#define MAX_SENSORS			32U
+sensor_t sensors[MAX_SENSORS];
 
 void printSensor(sensor_t *sensor);
 
@@ -1393,6 +1393,7 @@ void processSensor(sensor_t *sensor)
 
 	default:
 		sensor->state = START_SENSOR_STATE;
+		debug.println("Funny state for sensor");
 		break;
 	}
 }
@@ -1438,9 +1439,32 @@ void printSensor(sensor_t *sensor)
 	debug.print("): ");
 }
 
+void sensorHandler(void)
+{
+	static unsigned long sensorTick;
+	static uint8_t sensorNum;
+	sensor_t *sensor;
+
+	if((long)(millis() - sensorTick) >= 0L) {
+		sensor = &sensors[sensorNum];
+		debug.print("Sensor: ");
+		debug.println(sensorNum);
+		processSensor(sensor);
+		if(sensor->state >= STOP_SENSOR_STATE) {
+			sensor->state = START_SENSOR_STATE;
+			sensorNum++;
+			if(sensorNum >= MAX_SENSORS) {
+				sensorTick += 5000UL;
+				sensorNum = 0;
+			}
+		}
+	}
+}
+
 void sensorInit(void)
 {
-	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+	//for(int8_t i = MAX_SENSORS; --i >= 0; ) {
+	for(int8_t i = 0; i < MAX_SENSORS; i++) {
 		sensors[i].id = i;
 		sensors[i].type = NONE_SENSOR_TYPE;
 		sensors[i].state = START_SENSOR_STATE;
@@ -1457,7 +1481,8 @@ void sensorInit(void)
 
 #ifdef DEBUG_SENSOR
 	debug.println("Found sensors:");
-	for(int8_t i = sizeof(sensors)/sizeof(sensors[0])-1; i >= 0; i--) {
+	//for(int8_t i = MAX_SENSORS; --i >= 0; ) {
+	for(int8_t i = 0; i < MAX_SENSORS; i++) {
 		sensor_t *sensor = &sensors[32-i-1];
 		if(sensor->type == NONE_SENSOR_TYPE)
 			continue;
@@ -1751,8 +1776,6 @@ void loop(void)
 	static unsigned long maxMainLoopTime = 0UL;
 	unsigned long mainLoopStartTime = millis();
 #endif
-	static size_t sensorNum;
-	sensor_t *sensor;
 
 #if 0
 	//set_sleep_mode(SLEEP_MODE_IDLE);
@@ -1785,86 +1808,7 @@ void loop(void)
 
 	xbeeHandler();
 
-	if(currentMillis - sensorTick >= 5000UL) {
-		sensor = &sensors[sensorNum];
-#if 0
-		switch(sensorNum) {
-		//case 0 + ANALOG_BASE_IDX:
-		//case 1 + ANALOG_BASE_IDX:
-		//case 2 + ANALOG_BASE_IDX:
-		//case 7 + LM75_BASE_IDX:
-		//case 0 + HIH6130_BASE_IDX:
-		//case 0 + TC_BASE_IDX:
-#ifdef ONE_WIRE_SENSORS
-		//case 0 + ONE_WIRE_BASE_IDX:
-		//case 1 + ONE_WIRE_BASE_IDX:
-		//case 2 + ONE_WIRE_BASE_IDX:
-#endif
-		case  0:
-		case  1:
-		case  2:
-		case  3:
-		case  4:
-		case  5:
-		case  6:
-		case  7:
-		case  8:
-		case  9:
-		case 10:
-		case 11:
-		case 12:
-		case 13:
-		case 14:
-		case 15:
-		case 16:
-		case 17:
-		case 18:
-		case 19:
-		case 20:
-		case 21:
-		case 22:
-		case 23:
-		case 24:
-		case 25:
-		case 26:
-		case 27:
-		case 28:
-		case 29:
-		case 30:
-		case 31:
-#endif
-			//debug.print("Sensor: ");
-			//debug.println(sensorNum);
-			processSensor(sensor);
-			//printSensor(sensor);
-			if(sensor->state >= STOP_SENSOR_STATE) {
-				//processSensor(sensor);
-				sensor->state = START_SENSOR_STATE;
-				sensorNum++;
-				if(sensorNum >= sizeof(sensors)/sizeof(sensors[0])) {
-					sensorTick += 5000UL;
-					sensorNum = 0;
-				}
-				//sensor = &sensors[sensorNum];
-				//sensor->state = START_SENSOR_STATE;
-			}
-#if 0
-			break;
-
-		default:
-			if(sensorNum >= sizeof(sensors)/sizeof(sensors[0])) {
-				sensorTick += 5000UL;
-				sensorNum = 0;
-			} else {
-				sensorNum++;
-			}
-			sensor = &sensors[sensorNum];
-			sensor->state = START_SENSOR_STATE;
-
-			break;
-		}
-#endif
-	}
+	sensorHandler();
 
 #ifdef DEBUG_TIMING
 	currentMillis = millis();
