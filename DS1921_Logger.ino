@@ -17,8 +17,8 @@
 
 #define DEBUG_SENSOR
 //#define DEBUG_TIMING
-//#define DEBUG_WIFLY
-//#define USE_ZIGBEE_DEBUG
+#define DEBUG_WIFLY
+#define USE_ZIGBEE_DEBUG
 
 #define USE_ARDUINO_XBEE
 
@@ -129,7 +129,7 @@
 
 
 #ifdef ARDUINO_UNO
-#define USE_SOFT_XBEE
+//#define USE_SOFT_XBEE
 #endif
 
 #ifdef USE_SOFT_XBEE
@@ -141,6 +141,8 @@ SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
 
 class Dummy : public Stream {
     public:
+	void begin(long baud) {}
+	void end() {}
 	virtual int available(void) { return 0; }
 	virtual int read(void) { return 0; }
 	virtual int peek(void) { return 0; }
@@ -1728,11 +1730,10 @@ void xbeeInit(void)
 	uart.begin(9600);
 #else
 #ifdef USE_SOFT_XBEE
-	localDebug.begin(9600);
 	pinMode(XBEE_RX_PIN, INPUT);
 	pinMode(XBEE_TX_PIN, OUTPUT);
-	//xbeeSerial2.begin(9600);
-	//xbee.setSerial(xbeeSerial2);
+	xbeeSerial2.begin(9600);
+	xbee.setSerial(xbeeSerial2);
 #else
 	xbee.begin(9600);
 #endif
@@ -2040,8 +2041,8 @@ void wiflyInit(void)
 
 void setup(void)
 {
-	//xbeeInit();
-	debug.begin(9600);
+	xbeeInit();
+	localDebug.begin(9600);
 	//delay(5000);
 	debug.println("Hello, World!");
 
@@ -2053,14 +2054,14 @@ void setup(void)
 #endif
 
 	/* Initialize Analog sensors */
-	//analogReference(DEFAULT);
+	analogReference(DEFAULT);
 
 	/* Initialize Digital sensors */
-	//pinMode(SCL, INPUT);
-	//pinMode(SDA, INPUT);
-	//digitalWrite(SCL, HIGH); /* Turn on pull-ups */
-	//digitalWrite(SDA, HIGH);
-	//Wire.begin();
+	pinMode(SCL, INPUT);
+	pinMode(SDA, INPUT);
+	digitalWrite(SCL, HIGH); /* Turn on pull-ups */
+	digitalWrite(SDA, HIGH);
+	Wire.begin();
 
 	//sensorInit();
 
@@ -2112,7 +2113,6 @@ void loop(void)
 		debug.print("UTime=");
 		debug.println(clock, DEC);
 	}
-	return;
 
 #ifdef ONE_WIRE_SENSORS
 	if(serial.available()) {
@@ -2120,9 +2120,9 @@ void loop(void)
 	}
 #endif
 
-	xbeeHandler();
+	//xbeeHandler();
 
-	sensorHandler();
+	//sensorHandler();
 
 #ifdef DEBUG_TIMING
 	currentMillis = millis();
