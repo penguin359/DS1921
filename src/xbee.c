@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+//#include <unistd.h>
 //#include <fcntl.h>
 //#include <sys/stat.h>
 
@@ -292,8 +292,8 @@ enum {
 
 int recvApiState = WAIT_API_STATE;
 
-unsigned char buf[128];
-unsigned char *bufPtr;
+//unsigned char buf[128];
+char *bufPtr;
 unsigned int len = 0;
 unsigned int bytesLeft = 0;
 unsigned char cksum = 0;
@@ -463,13 +463,13 @@ int recvApi(xbee_t *xbee)
 
 	case LEN_LSB_API_STATE:
 		len |= c & 0xff;
-		if(len > sizeof(buf)) {
+		if(len > sizeof(xbee->buf)) {
 			fprintf(stderr, "API Packet too large: %u\n", len);
 			recvApiState = WAIT_API_STATE;
 			return -1;
 		}
 		cksum = 0;
-		bufPtr = buf;
+		bufPtr = xbee->buf;
 		bytesLeft = len;
 		if(bytesLeft > 0)
 			recvApiState = DATA_API_STATE;
@@ -493,7 +493,7 @@ int recvApi(xbee_t *xbee)
 			return -1;
 		}
 
-		processApi(buf, len);
+		processApi((unsigned char *)xbee->buf, len);
 		return 1;
 		break;
 	}

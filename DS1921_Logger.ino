@@ -13,15 +13,15 @@
  */
 
 
-#define ARDUINO_UNO
+//#define ARDUINO_UNO
 
 #define DEBUG_SENSOR
-#define DEBUG_TIMING
-#define USE_ZIGBEE_DEBUG
+//#define DEBUG_TIMING
+//#define USE_ZIGBEE_DEBUG
 
 #define USE_ARDUINO_XBEE
 
-#define ONE_WIRE_SENSORS
+//#define ONE_WIRE_SENSORS
 #define SELF_POWERED
 
 #define LED_NOTIFICATION
@@ -692,11 +692,11 @@ void analogSensorInit(void)
 	const int sensorPin[] = {
 		A0,
 		A1,
-		A2,
-		A3,
-#ifdef CORE_TEENSY
-		A4,
-		A5,
+		//A2,
+		//A3,
+#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
+		//A4,
+		//A5,
 #else
 		A6,
 		A7,
@@ -752,7 +752,7 @@ sensorState_t readLM75Sensor(sensor_t *sensor)
 {
 	uint8_t addr = sensor->addr;
 	uint8_t config = 0;
-	uint8_t val;
+	uint16_t val;
 #ifdef DEBUG_SENSOR
 	temp_t temp;
 #endif
@@ -1447,8 +1447,8 @@ void sensorHandler(void)
 
 	if((long)(millis() - sensorTick) >= 0L) {
 		sensor = &sensors[sensorNum];
-		debug.print("Sensor: ");
-		debug.println(sensorNum);
+		//debug.print("Sensor: ");
+		//debug.println(sensorNum);
 		processSensor(sensor);
 		if(sensor->state >= STOP_SENSOR_STATE) {
 			sensor->state = START_SENSOR_STATE;
@@ -1464,7 +1464,7 @@ void sensorHandler(void)
 void sensorInit(void)
 {
 	//for(int8_t i = MAX_SENSORS; --i >= 0; ) {
-	for(int8_t i = 0; i < MAX_SENSORS; i++) {
+	for(int8_t i = 0; i < (int8_t)MAX_SENSORS; i++) {
 		sensors[i].id = i;
 		sensors[i].type = NONE_SENSOR_TYPE;
 		sensors[i].state = START_SENSOR_STATE;
@@ -1482,8 +1482,9 @@ void sensorInit(void)
 #ifdef DEBUG_SENSOR
 	debug.println("Found sensors:");
 	//for(int8_t i = MAX_SENSORS; --i >= 0; ) {
-	for(int8_t i = 0; i < MAX_SENSORS; i++) {
-		sensor_t *sensor = &sensors[32-i-1];
+	for(int8_t i = 0; i < (int8_t)MAX_SENSORS; i++) {
+		//sensor_t *sensor = &sensors[32-i-1];
+		sensor_t *sensor = &sensors[i];
 		if(sensor->type == NONE_SENSOR_TYPE)
 			continue;
 		debug.print("  ");
@@ -1741,7 +1742,7 @@ void xbeeInit(void)
 void setup(void)
 {
 	xbeeInit();
-	delay(5000);
+	//delay(5000);
 	debug.println("Hello, World!");
 
 #ifdef LED_NOTIFICATION
