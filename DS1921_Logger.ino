@@ -13,13 +13,20 @@
  */
 
 
-//#define ARDUINO_UNO
+#define ARDUINO_UNO
 
 #define DEBUG_SENSOR
-//#define DEBUG_TIMING
+#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
 #define USE_ARDUINO_XBEE
+
+#define ONE_WIRE_SENSORS
+#define SELF_POWERED
+
+#define LED_NOTIFICATION
+#define PIEZO_NOTIFICATION
+
 
 #include "DS1921_Logger.h"
 #include "serial.h"
@@ -34,16 +41,9 @@
 #include <XBee.h>
 #endif
 
-#define SELF_POWERED			1
-
-#define ONE_WIRE_SENSORS
-
 #ifdef ONE_WIRE_SENSORS
 #include <OneWire.h>
 #endif
-
-#define LED_NOTIFICATION
-#define PIEZO_NOTIFICATION
 
 
 #define DS18B20_CONVERT_TEMP		0x44
@@ -104,11 +104,7 @@
 
 
 #ifdef LED_NOTIFICATION
-//#ifdef CORE_TEENSY
-//#define LED_PIN				11
-//#else
 #define LED_PIN				LED_BUILTIN
-//#endif
 #define ledOn()				digitalWrite(LED_PIN, HIGH)
 #define ledOff()			digitalWrite(LED_PIN, LOW)
 #endif
@@ -132,6 +128,10 @@
 
 
 #ifdef ARDUINO_UNO
+#define USE_SOFT_XBEE
+#endif
+
+#ifdef USE_SOFT_XBEE
 #define XBEE_RX_PIN			2
 #define XBEE_TX_PIN			3
 SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
@@ -220,24 +220,28 @@ class SensorDebug : public Stream {
 
 #ifndef USE_ARDUINO_XBEE
 HardwareSerial uart = HardwareSerial();
-#endif
 //#define debug Uart
-#ifdef USE_ZIGBEE_DEBUG
-SensorDebug debug = SensorDebug();
-#else
-#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
-#define debug Serial
-#else
-#define debug dummy
-#define NEED_DUMMY_STREAM
-#endif
 #endif
 
-#if defined(CORE_TEENSY) || defined(ARDUINO_UNO)
+/* localDebug uses serial port if available */
+#if defined(CORE_TEENSY) || defined(USE_SOFT_XBEE)
 #define localDebug Serial
 #else
 #define localDebug dummy
 #define NEED_DUMMY_STREAM
+#endif
+
+/* debug can send output over Zigbee or locally */
+#ifdef USE_ZIGBEE_DEBUG
+SensorDebug debug = SensorDebug();
+#else
+//#if defined(CORE_TEENSY) || defined(USE_SOFT_XBEE)
+//#define debug Serial
+//#else
+//#define debug dummy
+//#define NEED_DUMMY_STREAM
+//#endif
+#define debug localDebug
 #endif
 
 #ifdef NEED_DUMMY_STREAM
@@ -1332,8 +1336,15 @@ void processSensor(sensor_t *sensor)
 	sensorState_t state = sensor->state;
 
 #ifdef DEBUG_TIMING
-	if(state == START_SENSOR_STATE)
+	if(state == START_SENSOR_STATE) {
 		sensor->startTime = millis();
+	} else if((long)(millis() - (sensor->startTime + 15000UL)) >= 0L) {
+		debug.print("Sensor ");
+		debug.print(sensor->id);
+		debug.println(" stuck for 15s, stopping...");
+		sensor->state = ERROR_SENSOR_STATE;
+		return;
+	}
 #endif
 	if(state < COMPLETED_SENSOR_STATE) {
 		if(state == WAIT_SENSOR_STATE) {
@@ -1696,7 +1707,7 @@ void xbeeInit(void)
 #ifndef USE_ARDUINO_XBEE
 	uart.begin(9600);
 #else
-#ifdef ARDUINO_UNO
+#ifdef USE_SOFT_XBEE
 	localDebug.begin(9600);
 	pinMode(XBEE_RX_PIN, INPUT);
 	pinMode(XBEE_TX_PIN, OUTPUT);
@@ -1785,17 +1796,49 @@ void loop(void)
 	if(currentMillis - sensorTick >= 5000UL) {
 		sensor = &sensors[sensorNum];
 		switch(sensorNum) {
-		case 0 + ANALOG_BASE_IDX:
-		case 1 + ANALOG_BASE_IDX:
-		case 2 + ANALOG_BASE_IDX:
-		case 7 + LM75_BASE_IDX:
-		case 0 + HIH6130_BASE_IDX:
-		case 0 + TC_BASE_IDX:
+		//case 0 + ANALOG_BASE_IDX:
+		//case 1 + ANALOG_BASE_IDX:
+		//case 2 + ANALOG_BASE_IDX:
+		//case 7 + LM75_BASE_IDX:
+		//case 0 + HIH6130_BASE_IDX:
+		//case 0 + TC_BASE_IDX:
 #ifdef ONE_WIRE_SENSORS
-		case 0 + ONE_WIRE_BASE_IDX:
-		case 1 + ONE_WIRE_BASE_IDX:
-		case 2 + ONE_WIRE_BASE_IDX:
+		//case 0 + ONE_WIRE_BASE_IDX:
+		//case 1 + ONE_WIRE_BASE_IDX:
+		//case 2 + ONE_WIRE_BASE_IDX:
 #endif
+		case  0:
+		case  1:
+		case  2:
+		case  3:
+		case  4:
+		case  5:
+		case  6:
+		case  7:
+		case  8:
+		case  9:
+		case 10:
+		case 11:
+		case 12:
+		case 13:
+		case 14:
+		case 15:
+		case 16:
+		case 17:
+		case 18:
+		case 19:
+		case 20:
+		case 21:
+		case 22:
+		case 23:
+		case 24:
+		case 25:
+		case 26:
+		case 27:
+		case 28:
+		case 29:
+		case 30:
+		case 31:
 			//debug.print("Sensor: ");
 			//debug.println(sensorNum);
 			processSensor(sensor);
