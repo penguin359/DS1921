@@ -1,0 +1,153 @@
+export PATH := /Applications/Arduino.app/Contents/Resources/Java/hardware/tools/avr/bin:$(PATH)
+ARDUINO = /Applications/Arduino.app/Contents/Resources/Java/hardware/tools/avr/bin
+CC = avr-gcc
+CPP = avr-g++
+COREPATH = /Applications/Arduino.app/Contents/Resources/Java/hardware/arduino/cores/arduino
+VARIANTPATH = /Applications/Arduino.app/Contents/Resources/Java/hardware/arduino/variants/standard
+LIBPATH = /Applications/Arduino.app/Contents/Resources/Java/libraries
+SRCPATH = .
+#BUILDPATH = /var/folders/Lh/Lh3XwfGLG6S-C8UoPDEOW++++TI/-Tmp-/build2814928687313585811.tmp
+BUILDPATH = build
+CFLAGS   = -g -Os -Wall 		-ffunction-sections -fdata-sections -mmcu=atmega328p -DF_CPU=16000000L -MMD -DARDUINO=100
+CPPFLAGS = -g -Os -Wall -fno-exceptions -ffunction-sections -fdata-sections -mmcu=atmega328p -DF_CPU=16000000L -MMD -DARDUINO=100
+HEADERS = -I$(COREPATH) -I$(VARIANTPATH) -I$(LIBPATH)/SPI -I$(LIBPATH)/Wire -I$(LIBPATH)/SoftwareSerial -I$(LIBPATH)/XBee -I$(LIBPATH)/OneWire -I.
+
+all: $(BUILDPATH)/DS1921_Logger.cpp.eep $(BUILDPATH)/DS1921_Logger.cpp.hex
+
+$(BUILDPATH)/sensor.c.o: $(SRCPATH)/sensor.c
+	$(CC) -c $(CFLAGS)   $(HEADERS) $< -o $@
+
+$(BUILDPATH)/xbee.c.o: $(SRCPATH)/xbee.c
+	$(CC) -c $(CFLAGS)   $(HEADERS) $< -o $@
+
+$(BUILDPATH)/DS1921_Logger.cpp: $(SRCPATH)/DS1921_Logger.ino 
+	echo '#include <Arduino.h>' | cat - $^ > $@
+
+$(BUILDPATH)/DS1921_Logger.cpp.o: $(BUILDPATH)/DS1921_Logger.cpp 
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) $< -o $@
+
+$(BUILDPATH)/serial.cpp.o: $(SRCPATH)/serial.cpp
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) $< -o $@
+
+$(BUILDPATH)/SPI/SPI.cpp.o: $(LIBPATH)/SPI/SPI.cpp
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) -I$(LIBPATH)/SPI/utility $< -o $@
+
+$(BUILDPATH)/Wire/Wire.cpp.o: $(LIBPATH)/Wire/Wire.cpp
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) -I$(LIBPATH)/Wire/utility $< -o $@
+
+$(BUILDPATH)/Wire/utility/twi.c.o: $(LIBPATH)/Wire/utility/twi.c
+	$(CC) -c $(CFLAGS)   $(HEADERS) -I$(LIBPATH)/Wire/utility $< -o $@
+
+$(BUILDPATH)/SoftwareSerial/SoftwareSerial.cpp.o: $(LIBPATH)/SoftwareSerial/SoftwareSerial.cpp
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) -I$(LIBPATH)/SoftwareSerial/utility $< -o $@
+
+$(BUILDPATH)/XBee/XBee.cpp.o: $(LIBPATH)/XBee/XBee.cpp
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) -I$(LIBPATH)/XBee/utility $< -o $@
+
+$(BUILDPATH)/OneWire/OneWire.cpp.o: $(LIBPATH)/OneWire/OneWire.cpp
+	$(CPP) -c $(CPPFLAGS) $(HEADERS) -I$(LIBPATH)/OneWire/utility $< -o $@
+
+$(BUILDPATH)/WInterrupts.c.o: $(COREPATH)/WInterrupts.c
+	$(CC) -c $(CFLAGS)   -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/wiring.c.o: $(COREPATH)/wiring.c
+	$(CC) -c $(CFLAGS)   -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/wiring_analog.c.o: $(COREPATH)/wiring_analog.c
+	$(CC) -c $(CFLAGS)   -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/wiring_digital.c.o: $(COREPATH)/wiring_digital.c
+	$(CC) -c $(CFLAGS)   -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/wiring_pulse.c.o: $(COREPATH)/wiring_pulse.c
+	$(CC) -c $(CFLAGS)   -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/wiring_shift.c.o: $(COREPATH)/wiring_shift.c
+	$(CC) -c $(CFLAGS)   -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/CDC.cpp.o: $(COREPATH)/CDC.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/HardwareSerial.cpp.o: $(COREPATH)/HardwareSerial.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/HID.cpp.o: $(COREPATH)/HID.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/IPAddress.cpp.o: $(COREPATH)/IPAddress.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/main.cpp.o: $(COREPATH)/main.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/new.cpp.o: $(COREPATH)/new.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/Print.cpp.o: $(COREPATH)/Print.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/Stream.cpp.o: $(COREPATH)/Stream.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/Tone.cpp.o: $(COREPATH)/Tone.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/USBCore.cpp.o: $(COREPATH)/USBCore.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/WMath.cpp.o: $(COREPATH)/WMath.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/WString.cpp.o: $(COREPATH)/WString.cpp
+	$(CPP) -c $(CPPFLAGS) -I$(COREPATH) -I$(VARIANTPATH) $< -o $@
+
+$(BUILDPATH)/core.a: $(BUILDPATH)/WInterrupts.c.o $(BUILDPATH)/wiring.c.o $(BUILDPATH)/wiring_analog.c.o $(BUILDPATH)/wiring_digital.c.o $(BUILDPATH)/wiring_pulse.c.o $(BUILDPATH)/wiring_shift.c.o $(BUILDPATH)/CDC.cpp.o $(BUILDPATH)/HardwareSerial.cpp.o $(BUILDPATH)/HID.cpp.o $(BUILDPATH)/IPAddress.cpp.o $(BUILDPATH)/main.cpp.o $(BUILDPATH)/new.cpp.o $(BUILDPATH)/Print.cpp.o $(BUILDPATH)/Stream.cpp.o $(BUILDPATH)/Tone.cpp.o $(BUILDPATH)/USBCore.cpp.o $(BUILDPATH)/WMath.cpp.o $(BUILDPATH)/WString.cpp.o
+	avr-ar rcs $@ $^
+
+$(BUILDPATH)/DS1921_Logger.cpp.elf: $(BUILDPATH)/sensor.c.o $(BUILDPATH)/xbee.c.o $(BUILDPATH)/DS1921_Logger.cpp.o $(BUILDPATH)/serial.cpp.o $(BUILDPATH)/SPI/SPI.cpp.o $(BUILDPATH)/Wire/Wire.cpp.o $(BUILDPATH)/Wire/utility/twi.c.o $(BUILDPATH)/SoftwareSerial/SoftwareSerial.cpp.o $(BUILDPATH)/XBee/XBee.cpp.o $(BUILDPATH)/OneWire/OneWire.cpp.o $(BUILDPATH)/core.a
+	$(CC) -Os -Wl,--gc-sections -mmcu=atmega328p -o $@ $^ -L$(BUILDPATH) -lm
+
+$(BUILDPATH)/DS1921_Logger.cpp.eep: $(BUILDPATH)/DS1921_Logger.cpp.elf
+	avr-objcopy -O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $< $@
+
+$(BUILDPATH)/DS1921_Logger.cpp.hex: $(BUILDPATH)/DS1921_Logger.cpp.elf
+	avr-objcopy -O ihex -R .eeprom $< $@
+
+clean:
+	-rm \
+	$(BUILDPATH)/sensor.c.o \
+	$(BUILDPATH)/xbee.c.o \
+	$(BUILDPATH)/DS1921_Logger.cpp.o \
+	$(BUILDPATH)/serial.cpp.o \
+	$(BUILDPATH)/SPI/SPI.cpp.o \
+	$(BUILDPATH)/Wire/Wire.cpp.o \
+	$(BUILDPATH)/Wire/utility/twi.c.o \
+	$(BUILDPATH)/SoftwareSerial/SoftwareSerial.cpp.o \
+	$(BUILDPATH)/XBee/XBee.cpp.o \
+	$(BUILDPATH)/OneWire/OneWire.cpp.o \
+	$(BUILDPATH)/WInterrupts.c.o \
+	$(BUILDPATH)/wiring.c.o \
+	$(BUILDPATH)/wiring_analog.c.o \
+	$(BUILDPATH)/wiring_digital.c.o \
+	$(BUILDPATH)/wiring_pulse.c.o \
+	$(BUILDPATH)/wiring_shift.c.o \
+	$(BUILDPATH)/CDC.cpp.o \
+	$(BUILDPATH)/HardwareSerial.cpp.o \
+	$(BUILDPATH)/HID.cpp.o \
+	$(BUILDPATH)/IPAddress.cpp.o \
+	$(BUILDPATH)/main.cpp.o \
+	$(BUILDPATH)/new.cpp.o \
+	$(BUILDPATH)/Print.cpp.o \
+	$(BUILDPATH)/Stream.cpp.o \
+	$(BUILDPATH)/Tone.cpp.o \
+	$(BUILDPATH)/USBCore.cpp.o \
+	$(BUILDPATH)/WMath.cpp.o \
+	$(BUILDPATH)/WString.cpp.o \
+	$(BUILDPATH)/core.a \
+	$(BUILDPATH)/DS1921_Logger.cpp.elf \
+	$(BUILDPATH)/DS1921_Logger.cpp.eep \
+	$(BUILDPATH)/DS1921_Logger.cpp.hex \
+	2>/dev/null
+
+upload: all
+	$(ARDUINO)/avrdude -C/Applications/Arduino.app/Contents/Resources/Java/hardware/tools/avr/etc/avrdude.conf -patmega328p -carduino -P/dev/tty.usbmodem1d11 -b115200 -D -Uflash:w:$(BUILDPATH)/DS1921_Logger.cpp.hex:i

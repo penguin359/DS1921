@@ -15,13 +15,15 @@
 
 //#define ARDUINO_UNO
 
-#define DEBUG_SENSOR
+//#define DEBUG_SENSOR
 //#define DEBUG_TIMING
 //#define USE_ZIGBEE_DEBUG
 
+//#define USE_SOFT_XBEE
+
 #define USE_ARDUINO_XBEE
 
-//#define ONE_WIRE_SENSORS
+#define ONE_WIRE_SENSORS
 #define SELF_POWERED
 
 #define LED_NOTIFICATION
@@ -33,7 +35,7 @@
 #include "xbee.h"
 #include "sensor.h"
 
-#ifdef ARDUINO_UNO
+#ifdef USE_SOFT_XBEE
 #include <SoftwareSerial.h>
 #endif
 
@@ -128,7 +130,7 @@
 
 
 #ifdef ARDUINO_UNO
-#define USE_SOFT_XBEE
+//#define USE_SOFT_XBEE
 #endif
 
 #ifdef USE_SOFT_XBEE
