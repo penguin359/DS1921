@@ -12,6 +12,8 @@ CFLAGS   = -g -Os -Wall 		-ffunction-sections -fdata-sections -mmcu=atmega328p -
 CPPFLAGS = -g -Os -Wall -fno-exceptions -ffunction-sections -fdata-sections -mmcu=atmega328p -DF_CPU=16000000L -MMD -DARDUINO=100
 HEADERS = -I$(COREPATH) -I$(VARIANTPATH) -I$(LIBPATH)/SPI -I$(LIBPATH)/Wire -I$(LIBPATH)/SoftwareSerial -I$(LIBPATH)/XBee -I$(LIBPATH)/OneWire -I.
 
+TTY = /dev/tty.usbmodem1d11
+
 all: $(BUILDPATH)/DS1921_Logger.cpp.eep $(BUILDPATH)/DS1921_Logger.cpp.hex
 
 $(BUILDPATH)/sensor.c.o: $(SRCPATH)/sensor.c
@@ -150,4 +152,4 @@ clean:
 	2>/dev/null
 
 upload: all
-	$(ARDUINO)/avrdude -C/Applications/Arduino.app/Contents/Resources/Java/hardware/tools/avr/etc/avrdude.conf -patmega328p -carduino -P/dev/tty.usbmodem1d11 -b115200 -D -Uflash:w:$(BUILDPATH)/DS1921_Logger.cpp.hex:i
+	$(ARDUINO)/avrdude -C/Applications/Arduino.app/Contents/Resources/Java/hardware/tools/avr/etc/avrdude.conf -patmega328p -carduino -P$(TTY) -b115200 -D -Uflash:w:$(BUILDPATH)/DS1921_Logger.cpp.hex:i

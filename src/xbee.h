@@ -85,6 +85,35 @@ typedef struct {
 typedef struct {
 	uint8_t		type;
 	uint8_t		frameId;
+	char		cmd[2];
+	uint8_t		val[0];
+} __attribute((packed)) atCommand_t;
+
+typedef struct {
+	uint8_t		type;
+	uint8_t		frameId;
+	macAddr64_t	addr64;
+	macAddr16_t	addr16;
+	uint8_t		radius;
+	uint8_t		options;
+	uint8_t		data[0];
+} __attribute((packed)) zbTxRequest_t;
+
+typedef struct {
+	uint8_t		type;
+	uint8_t		status;
+} __attribute((packed)) modemStatus_t;
+
+#define HARDWARE_RESET_MODEM_STATUS		0
+#define WATCHDOG_RESET_MODEM_STATUS		1
+#define ASSOCIATED_MODEM_STATUS			2
+#define DISASSOCIATED_MODEM_STATUS		3
+#define COORDINATOR_STARTED_MODEM_STATUS	6
+#define NETWORK_SECURITY_KEY_MODEM_STATUS	7
+
+typedef struct {
+	uint8_t		type;
+	uint8_t		frameId;
 	macAddr16_t	addr16;
 	uint8_t		retries;
 	uint8_t		deliveryStatus;
@@ -110,6 +139,8 @@ void initNodes(void);
 
 void startNodeSearch(void);
 node_t *findNextNode(void);
+
+node_t *findNodeByAddr64(macAddr64_t *addr64);
 
 char *strMacAddr64(macAddr64_t *addr64);
 

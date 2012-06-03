@@ -17,6 +17,76 @@ typedef uint32_t time_t;
 #endif
 
 
+int handlePacket(node_t *node, unsigned char *buf, int bufLen)
+{
+	int i;
+
+	switch(buf[0]) {
+	case QUERY_TIME_SENSOR_CMD | 0x80:
+		printf("Retrieved time: %u\n", *(unsigned int *)&buf[1]);
+		return 0;
+		break;
+
+	case QUERY_SENSOR_SENSOR_CMD | 0x80:
+		{
+			char *types[] = {
+				"None",
+				"Analog",
+				"LM75",
+				"HIH6130",
+				"TC",
+				"1-Wire",
+				"Light",
+			};
+			struct querySensorResponse *sensor =
+			    (struct querySensorResponse *)&buf[0];
+			int num = sensor->sensor;
+			int type = sensor->type;
+			time_t time = sensor->time;
+			int val = sensor->data16[0];
+			int val2 = sensor->data16[1];
+
+			if(node != NULL) {
+				if(type == 3)
+					printf("Sensor(%2d) on %s type %-7s is %.2f°F and %.2f%% humidity @ %lu\n", num, node->identifier, types[sensor->type], ((double)val / (double)(1 << 14) * 165. - 40.) * 9./5. + 32., (double)val2 / (double)(1 << 14) * 100., time);
+				else if(type == 6)
+					printf("Sensor(%2d) on %s type %-7s is at %.2f%% of light @ %lu\n", num, node->identifier, types[sensor->type], (double)val / (double)(1 << 15) * 100., time);
+				else
+					printf("Sensor(%2d) on %s type %-7s is %.2f°F @ %lu\n", num, node->identifier, types[sensor->type], (double)(val - (273 << 4)) * 0.0625 * 9./5. + 32., time);
+			}
+			//temp = (double)val / (double)(1 << 14) * 165. - 40.;
+		}
+		return 0;
+		break;
+
+	case DEBUG_SENSOR_CMD:
+		printf("Debug: '");
+		fflush(stdout);
+		buf += 1;
+		bufLen -= 1;
+		while(bufLen-- > 0) {
+			if(isprint(*buf)) {
+				printf("%c", *buf++);
+			} else {
+				printf("<%02X>", (unsigned)*buf++);
+			}
+		}
+		printf("'\n");
+		return 0;
+		break;
+
+	default:
+		printf("Unknown command: 0x%x\n", buf[0]);
+	}
+
+	printf("I spy a Zigbee packet reception -> ");
+	for(i = 0; i < bufLen; i++)
+		fputc(buf[i], stdout);
+	fputc('\n', stdout);
+
+	return 0;
+}
+
 #define MAX_NODES		10
 node_t nodes[MAX_NODES];
 
@@ -281,6 +351,21 @@ int sendTxExplicit(xbee_t *xbee, macAddr64_t *addr64, void *data, int len, int s
 	return sendApi(xbee, buf, bufLen);
 }
 
+int sendTxStatus(xbee_t *xbee, uint8_t frameId, macAddr16_t *addr16)
+{
+	xbee->bufLen = 0;
+	sendApiBytes(xbee, 2);
+	xbee->buf[xbee->bufLen++] = ZB_TX_STATUS_API_CMD;
+	xbee->buf[xbee->bufLen++] = frameId;
+	memcpy(&xbee->buf[xbee->bufLen], addr16, sizeof(macAddr16_t));
+	xbee->bufLen += sizeof(macAddr16_t);
+	xbee->buf[xbee->bufLen++] = 0; /* retries */
+	xbee->buf[xbee->bufLen++] = ZB_DELIVERY_STATUS_SUCCESS;
+	xbee->buf[xbee->bufLen++] = 0; /* discoveryStatus */
+
+	return sendApi(xbee, xbee->buf, xbee->bufLen);
+}
+
 enum {
 	WAIT_API_STATE,
 	//START_API_STATE,
@@ -301,87 +386,28 @@ bool escapeNextByte = FALSE;
 
 int addNewNodeCallback(nodeIdentification_t *node);
 
-int processApi(unsigned char *buf, int len)
+int processApi(xbee_t *xbee, unsigned char *buf, int len)
 {
-	int i;
 	zbTxStatusResponse_t *txStatus;
-	node_t		     *node;
 	nodeIdentification_t *nodeId;
+	node_t		     *node;
 
 	switch(buf[0]) {
+		struct zbTxRequest_t *txRequest;
 	case ZB_TX_API_CMD:
-		printf("I spy a Zigbee packet transmission -> ");
+		//printf("I spy a Zigbee packet transmission -> ");
+		txRequest = (struct zbTxRequest_t *)buf;
+		node = findNodeByAddr64((macAddr64_t *)(((char *)txRequest)+2));  //&txRequest->addr16);
+		handlePacket(node, ((unsigned char *)txRequest)+14, len - 14);
+		sendTxStatus(xbee, buf[1], (macAddr16_t *)&buf[10]);
+		return 0;
 		break;
 
 	case ZB_RX_API_CMD:
 		if(len < 12)
 			break;
-		switch(buf[12]) {
-		case QUERY_TIME_SENSOR_CMD | 0x80:
-			printf("Retrieved time: %u\n", *(unsigned int *)&buf[13]);
-			return 0;
-			break;
-
-		case QUERY_SENSOR_SENSOR_CMD | 0x80:
-			{
-				char *types[] = {
-					"None",
-					"Analog",
-					"LM75",
-					"HIH6130",
-					"TC",
-					"1-Wire",
-					"Light",
-				};
-				struct querySensorResponse *sensor =
-				    (struct querySensorResponse *)&buf[12];
-				int num = sensor->sensor;
-				int type = sensor->type;
-				time_t time = sensor->time;
-				int val = sensor->data16[0];
-				int val2 = sensor->data16[1];
-
-				node = findNodeByAddr64((macAddr64_t *)&buf[1]);
-				if(node != NULL) {
-					if(type == 3)
-						printf("Sensor(%2d) on %s type %-7s is %.2f°F and %.2f%% humidity @ %lu\n", num, node->identifier, types[sensor->type], ((double)val / (double)(1 << 14) * 165. - 40.) * 9./5. + 32., (double)val2 / (double)(1 << 14) * 100., time);
-					else if(type == 6)
-						printf("Sensor(%2d) on %s type %-7s is at %.2f%% of light @ %lu\n", num, node->identifier, types[sensor->type], (double)val / (double)(1 << 15) * 100., time);
-					else
-						printf("Sensor(%2d) on %s type %-7s is %.2f°F @ %lu\n", num, node->identifier, types[sensor->type], (double)(val - (273 << 4)) * 0.0625 * 9./5. + 32., time);
-				}
-				//temp = (double)val / (double)(1 << 14) * 165. - 40.;
-			}
-			return 0;
-			break;
-
-		case DEBUG_SENSOR_CMD:
-			printf("Debug: '");
-			fflush(stdout);
-			buf += 13;
-			len -= 13;
-			while(len-- > 0) {
-				if(isprint(*buf)) {
-					printf("%c", *buf++);
-				} else {
-					printf("<%02X>", (unsigned)*buf++);
-				}
-			}
-			printf("'\n");
-			return 0;
-			break;
-
-		default:
-			printf("Unknown command: 0x%x\n", buf[12]);
-		}
-		if(len == 16) {
-			printf("Retrieved time: %u\n", *(unsigned int *)&buf[12]);
-			return 0;
-		}
-		printf("I spy a Zigbee packet reception -> ");
-		for(i = 12; i < len; i++)
-			fputc(buf[i], stdout);
-		fputc('\n', stdout);
+		node = findNodeByAddr64((macAddr64_t *)&buf[1]);
+		handlePacket(node, &buf[12], len - 12);
 		return 0;
 		break;
 
@@ -493,7 +519,7 @@ int recvApi(xbee_t *xbee)
 			return -1;
 		}
 
-		processApi((unsigned char *)xbee->buf, len);
+		processApi(xbee, (unsigned char *)xbee->buf, len);
 		return 1;
 		break;
 	}

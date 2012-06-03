@@ -15,9 +15,10 @@
 
 //#define ARDUINO_UNO
 
-//#define DEBUG_SENSOR
+#define DEBUG_ASSERT
+#define DEBUG_SENSOR
 //#define DEBUG_TIMING
-//#define USE_ZIGBEE_DEBUG
+#define USE_ZIGBEE_DEBUG
 
 //#define USE_SOFT_XBEE
 
@@ -1394,8 +1395,9 @@ void processSensor(sensor_t *sensor)
 		break;
 
 	default:
+		debug.print("Funny state for sensor: ");
+		debug.println(sensor->state);
 		sensor->state = START_SENSOR_STATE;
-		debug.println("Funny state for sensor");
 		break;
 	}
 }
@@ -1448,6 +1450,16 @@ void sensorHandler(void)
 	sensor_t *sensor;
 
 	if((long)(millis() - sensorTick) >= 0L) {
+#ifdef DEBUG_ASSERT
+		sensorNum = 32U;
+		if(sensorNum >= MAX_SENSORS) {
+			debug.print("ASSERT: sensorNum >= MAX_SENSORS: ");
+			debug.print((long)sensorNum, DEC);
+			debug.print(" - ");
+			debug.println(MAX_SENSORS, DEC);
+			sensorNum = 0;
+		}
+#endif
 		sensor = &sensors[sensorNum];
 		//debug.print("Sensor: ");
 		//debug.println(sensorNum);
@@ -1473,12 +1485,12 @@ void sensorInit(void)
 		sensors[i].flags = 0;
 	}
 
-	analogSensorInit();
+	//analogSensorInit();
 	lm75SensorInit();
-	hih6130SensorInit();
-	tcSensorInit();
+	//hih6130SensorInit();
+	//tcSensorInit();
 #ifdef ONE_WIRE_SENSORS
-	oneWireSensorInit();
+	//oneWireSensorInit();
 #endif
 
 #ifdef DEBUG_SENSOR
@@ -1734,7 +1746,7 @@ void xbeeInit(void)
 	xbeeSerial2.begin(9600);
 	xbee.setSerial(xbeeSerial2);
 #else
-	xbee.begin(9600);
+	xbee.begin(115200);
 #endif
 #endif
 }

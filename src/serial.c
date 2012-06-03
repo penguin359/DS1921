@@ -103,7 +103,7 @@ serial_t *openSerial(char *file)
 	}
 
 	memcpy(&serial->savedTermios, &termios, sizeof(struct termios));
-	cfsetspeed(&termios, B9600);
+	cfsetspeed(&termios, B115200);
 	termios.c_cflag &= ~(CSIZE | CSTOPB | PARENB | CRTSCTS);
 	termios.c_cflag |= CS8 | CREAD | CLOCAL;
 	termios.c_lflag &= ~(ECHO | ICANON | IEXTEN);
