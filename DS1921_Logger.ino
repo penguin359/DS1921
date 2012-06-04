@@ -144,8 +144,8 @@ SoftwareSerial xbeeSerial2 = SoftwareSerial(XBEE_RX_PIN, XBEE_TX_PIN);
 class Dummy : public Stream {
     public:
 	virtual int available(void) { return 0; }
-	virtual int read(void) { return 0; }
-	virtual int peek(void) { return 0; }
+	virtual int read(void) { return -1; }
+	virtual int peek(void) { return -1; }
 	virtual void flush(void) {}
 	virtual size_t write(uint8_t val) { return 0; }
 };
@@ -185,8 +185,8 @@ class SensorDebug : public Stream {
 	}
 
 	virtual int available(void) { return 0; }
-	virtual int read(void) { return 0; }
-	virtual int peek(void) { return 0; }
+	virtual int read(void) { return -1; }
+	virtual int peek(void) { return -1; }
 	virtual void flush(void) {
 #ifdef USE_ARDUINO_XBEE
 		zbTx.setPayloadLength(offset);
@@ -199,7 +199,7 @@ class SensorDebug : public Stream {
 		return write(&val, sizeof(val));
 	}
 
-	virtual size_t write(uint8_t *val, size_t len) {
+	virtual size_t write(const uint8_t *val, size_t len) {
 		unsigned int i;
 
 		for(i = 0U; offset < sizeof(debugPayload) && i < len; offset++, i++) {
@@ -600,7 +600,7 @@ void parseSerial(char c)
 				serial.print(rtcBuf[i], HEX);
 				serial.print(" ");
 			}
-			serial.println("");
+			serial.println();
 			serial.println("  Updating RTC...");
 			writeDS1921(addr, DS1921_RTC_REGISTER, rtcBuf, sizeof(rtcBuf));
 		}
@@ -1143,7 +1143,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 				debug.print(" ");
 				debug.print(ds.read(), HEX);
 			}
-			debug.println("");
+			debug.println();
 			for( ; i < 0x11; i++)
 				ds.read();
 #else
@@ -1203,7 +1203,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 				debug.print(rtc[4-i], HEX);
 				debug.print(" ");
 			}
-			debug.println("");
+			debug.println();
 			readDS1921(addr, DS1921_DATA_LOG, NULL, 0);
 			debug.println("  Data log:");
 			if(count > 2048)
@@ -1213,7 +1213,7 @@ sensorState_t readOneWireSensor(sensor_t *sensor)
 				debug.print("    ");
 				debug.println(ds.read(), DEC);
 			}
-			debug.println("");
+			debug.println();
 #endif
 		} else {
 			ds.write(DS18B20_READ_SCRATCHPAD);
@@ -1291,7 +1291,7 @@ void oneWireSensorInit(void)
 			debug.write(' ');
 			debug.print(oneWireSensors[i].addr[j], HEX);
 		}
-		debug.println("");
+		debug.println();
 #endif
 	}
 }
@@ -1451,10 +1451,9 @@ void sensorHandler(void)
 
 	if((long)(millis() - sensorTick) >= 0L) {
 #ifdef DEBUG_ASSERT
-		sensorNum = 32U;
 		if(sensorNum >= MAX_SENSORS) {
 			debug.print("ASSERT: sensorNum >= MAX_SENSORS: ");
-			debug.print((long)sensorNum, DEC);
+			debug.print(sensorNum, DEC);
 			debug.print(" - ");
 			debug.println(MAX_SENSORS, DEC);
 			sensorNum = 0;
@@ -1650,7 +1649,7 @@ void xbeeHandler(void)
 			if (rx.getOption() == ZB_PACKET_ACKNOWLEDGED) {
 				localDebug.print(" (ACK)");
 			}
-			localDebug.println("");
+			localDebug.println();
 			if(rx.getDataLength() < 1)
 				break;
 			switch(dataPtr[0]) {
