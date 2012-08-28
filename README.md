@@ -5,3 +5,4 @@ This contains both the remote side and the host side of the sensor logger.  The 
 You can try out the host side of the logger with this command:
 
 > make test
+
